@@ -22,6 +22,7 @@ import {
 } from '@/features/chat/tabs/TabSessionEvents';
 import type { TabDOMElements } from '@/features/chat/tabs/types';
 import { TurnCoordinator } from '@/features/chat/turns/TurnCoordinator';
+import { t } from '@/i18n/i18n';
 import { getVaultPath } from '@/utils/path';
 
 export function buildTabRuntimeShell(
@@ -227,7 +228,7 @@ function createTabExecutionCoordinator(
     resolveMissingProviderSession: (conversationId, missingProviderSessionId) =>
       plugin.handleMissingProviderSession(conversationId, missingProviderSessionId),
     onError: error => {
-      new Notice(error instanceof Error ? error.message : 'Provider execution failed.');
+      new Notice(error instanceof Error ? error.message : t('chat.errors.providerExecution'));
     },
     idleReleaseMs: IDLE_SESSION_RELEASE_MS,
     isOwnerIdle: () => {

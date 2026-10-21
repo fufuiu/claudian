@@ -75,7 +75,7 @@ export class ConversationRewind {
     const msgs = state.messages;
     const userIdx = msgs.findIndex(m => m.id === userMessageId);
     if (userIdx === -1) {
-      failed('Message not found');
+      failed(t('chat.fork.errorMessageNotFound'));
       return;
     }
     const userMsg = msgs[userIdx];
@@ -112,23 +112,23 @@ export class ConversationRewind {
         try {
           initialized = await this.deps.ensureExecutionInitialized();
         } catch (e) {
-          failed(e instanceof Error ? e.message : 'Failed to initialize agent service');
+          failed(e instanceof Error ? e.message : t('chat.errors.initializeAgentService'));
           return;
         }
         if (this.deps.isDisposed?.()) return;
         if (!initialized) {
-          failed('Agent service not available');
+          failed(t('chat.errors.serviceUnavailable'));
           return;
         }
       }
 
       const coordinator = this.deps.getExecutionCoordinator();
       if (!coordinator) {
-        failed('Agent execution not available');
+        failed(t('chat.errors.agentExecutionUnavailable'));
         return;
       }
       if (!isTargetCurrent()) {
-        failed('Conversation changed while rewinding.');
+        failed(t('chat.errors.rewindConversationChanged'));
         return;
       }
       /** True while the tab is idle and both the target and its execution are unchanged. */
@@ -138,7 +138,7 @@ export class ConversationRewind {
           return false;
         }
         if (!isTargetCurrent() || this.deps.getExecutionCoordinator() !== coordinator) {
-          failed('Conversation changed while rewinding.');
+          failed(t('chat.errors.rewindConversationChanged'));
           return false;
         }
         return true;
@@ -152,11 +152,11 @@ export class ConversationRewind {
         try {
           preview = await coordinator.previewRewind(nativeUserMessageId, prevAssistantUuid, mode);
         } catch (e) {
-          failed(e instanceof Error ? e.message : 'Unknown error');
+          failed(e instanceof Error ? e.message : t('common.unknownError'));
           return;
         }
         if (!preview.canRewind) {
-          new Notice(t('chat.rewind.cannot', { error: preview.error ?? 'Unknown error' }));
+          new Notice(t('chat.rewind.cannot', { error: preview.error ?? t('common.unknownError') }));
           return;
         }
         if (preview.conflicts && preview.conflicts.length > 0) {
@@ -177,15 +177,15 @@ export class ConversationRewind {
       try {
         result = await coordinator.rewind(nativeUserMessageId, prevAssistantUuid, mode);
       } catch (e) {
-        failed(e instanceof Error ? e.message : 'Unknown error');
+        failed(e instanceof Error ? e.message : t('common.unknownError'));
         return;
       }
       if (!result.canRewind) {
-        new Notice(t('chat.rewind.cannot', { error: result.error ?? 'Unknown error' }));
+        new Notice(t('chat.rewind.cannot', { error: result.error ?? t('common.unknownError') }));
         return;
       }
       if (!isTargetCurrent() || this.deps.getExecutionCoordinator() !== coordinator) {
-        failed('Conversation changed while rewinding.');
+        failed(t('chat.errors.rewindConversationChanged'));
         return;
       }
 
@@ -212,7 +212,7 @@ export class ConversationRewind {
             },
         );
       } catch (e) {
-        saveError = e instanceof Error ? e.message : 'Failed to save';
+        saveError = e instanceof Error ? e.message : t('chat.errors.save');
       }
 
       if (saveError) {

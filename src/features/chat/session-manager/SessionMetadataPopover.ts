@@ -3,6 +3,7 @@ import { setIcon } from 'obsidian';
 import type { ProviderIconSvg } from '@/core/providers/types';
 import type { ConversationMeta } from '@/core/types';
 import { getLinkedContentTitle, isLegacyProvisionalLinkedContent } from '@/features/chat/session-manager/SessionListOrganizer';
+import { getCurrentLocale, t } from '@/i18n/i18n';
 import { createProviderIconSvg } from '@/shared/icons';
 
 /** Presentation inputs the popover reads from the current list render. */
@@ -27,7 +28,7 @@ interface SessionMetadataView {
 }
 
 export function formatSessionCreatedDate(timestamp: number): string {
-  return new Date(timestamp).toLocaleDateString(undefined, {
+  return new Date(timestamp).toLocaleDateString(getCurrentLocale(), {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
@@ -35,7 +36,7 @@ export function formatSessionCreatedDate(timestamp: number): string {
 }
 
 export function formatSessionLastActive(timestamp: number): string {
-  return new Date(timestamp).toLocaleString(undefined, {
+  return new Date(timestamp).toLocaleString(getCurrentLocale(), {
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
@@ -275,8 +276,8 @@ export class SessionMetadataPopover {
     const provider = providerRow.createSpan({ cls: 'claudian-session-metadata-value claudian-session-metadata-value--provider' });
     this.view = {
       el, linkedContent, provider,
-      created: this.#renderRow(el, 'calendar-days', 'Created', ''),
-      lastActive: this.#renderRow(el, 'clock-3', 'Last active', ''),
+      created: this.#renderRow(el, 'calendar-days', t('chat.sessions.created'), ''),
+      lastActive: this.#renderRow(el, 'clock-3', t('chat.sessions.lastActive'), ''),
       providerIcon: null, providerIconKey: '',
     };
     return this.view;

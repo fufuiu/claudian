@@ -1,4 +1,5 @@
 import type { AgentSkillInput } from '@/features/agent-skills/AgentSkill';
+import { t } from '@/i18n/i18n';
 
 const MAX_NAME_LENGTH = 64;
 const MAX_DESCRIPTION_LENGTH = 1024;
@@ -17,18 +18,18 @@ export class AgentSkillValidationError extends Error {
   }
 }
 
-export function validateAgentSkillName(name: string): string | null {
+export function validateAgentSkillName(name: string, label = t('settings.agentSkills.modal.name')): string | null {
   if (!name) {
-    return 'Skill name is required';
+    return t('settings.agentSkills.errors.nameRequired', { label });
   }
   if (name.length > MAX_NAME_LENGTH) {
-    return `Skill name must be ${MAX_NAME_LENGTH} characters or fewer`;
+    return t('settings.agentSkills.errors.nameLength', { label, max: MAX_NAME_LENGTH });
   }
   if (!PORTABLE_NAME_PATTERN.test(name)) {
-    return 'Skill name must contain lowercase letters or numbers separated by single hyphens';
+    return t('settings.agentSkills.errors.nameFormat', { label });
   }
   if (YAML_RESERVED_NAMES.has(name)) {
-    return 'Skill name cannot be a YAML reserved word';
+    return t('settings.agentSkills.errors.reserved', { label });
   }
   return null;
 }
@@ -43,16 +44,16 @@ export function collectAgentSkillInputErrors(input: AgentSkillInput): AgentSkill
 
   const description = input.description.trim();
   if (!description) {
-    errors.push(new AgentSkillValidationError('description', 'Skill description is required'));
+    errors.push(new AgentSkillValidationError('description', t('settings.agentSkills.errors.descriptionRequired')));
   } else if (description.length > MAX_DESCRIPTION_LENGTH) {
     errors.push(new AgentSkillValidationError(
       'description',
-      `Skill description must be ${MAX_DESCRIPTION_LENGTH} characters or fewer`,
+      t('settings.agentSkills.errors.descriptionLength', { max: MAX_DESCRIPTION_LENGTH }),
     ));
   }
 
   if (!input.instructions.trim()) {
-    errors.push(new AgentSkillValidationError('instructions', 'Skill instructions are required'));
+    errors.push(new AgentSkillValidationError('instructions', t('settings.agentSkills.errors.instructionsRequired')));
   }
   return errors;
 }

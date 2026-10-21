@@ -1,4 +1,6 @@
 import type { TabAttention } from '@/features/chat/state/types';
+import { getCurrentLocale, t } from '@/i18n/i18n';
+import type { TranslationKey } from '@/i18n/types';
 
 export type HistoryConversationOpenState = 'closed' | 'open' | 'current';
 
@@ -21,11 +23,11 @@ export interface SessionStatusDisplay {
 
 const INDICATOR_PRESENTATION: Readonly<Record<SessionStatusIndicatorKind, {
   icon: string;
-  label: string;
+  label: TranslationKey;
 }>> = {
-  'action-required': { icon: 'alert-circle', label: 'Needs your input' },
-  error: { icon: 'x-circle', label: 'Stopped with an error' },
-  running: { icon: 'loader-2', label: 'Running' },
+  'action-required': { icon: 'alert-circle', label: 'chat.status.needsInput' },
+  error: { icon: 'x-circle', label: 'chat.status.stoppedError' },
+  running: { icon: 'loader-2', label: 'common.running' },
 };
 
 /** Archived rows never present attention, even when their tab still carries it. */
@@ -75,7 +77,8 @@ export function indicatorPresentation(kind: SessionStatusIndicatorKind): {
   icon: string;
   label: string;
 } {
-  return INDICATOR_PRESENTATION[kind];
+  const presentation = INDICATOR_PRESENTATION[kind];
+  return { ...presentation, label: t(presentation.label) };
 }
 
 export function sessionItemIcon(
@@ -88,9 +91,9 @@ export function sessionItemIcon(
 }
 
 function tabLabel(status: HistoryConversationStatus): string {
-  if (typeof status.tabIndex === 'number') return `tab ${status.tabIndex}`;
-  if (status.openState === 'current') return 'current tab';
-  return 'tab';
+  if (typeof status.tabIndex === 'number') return t('chat.sessions.tabNumber', { index: status.tabIndex });
+  if (status.openState === 'current') return t('chat.sessions.currentTab');
+  return t('chat.sessions.tab');
 }
 
 export function sessionStatusText(
@@ -104,21 +107,21 @@ export function sessionStatusText(
   if (!showOpenStateLabels) return formatSessionDate(timestamp);
 
   if (openState !== 'closed' && location === 'other-view') {
-    return isRunning ? 'Running in another pane' : 'Open in another pane';
+    return isRunning ? t('chat.sessions.runningOtherPane') : t('chat.sessions.openOtherPane');
   }
 
   if (isRunning) {
-    if (openState === 'closed') return 'Running';
-    return `Running in ${tabLabel(status)}`;
+    if (openState === 'closed') return t('common.running');
+    return t('chat.sessions.runningIn', { tab: tabLabel(status) });
   }
 
   switch (openState) {
     case 'current':
       return typeof status.tabIndex === 'number'
-        ? `Current tab ${status.tabIndex}`
-        : 'Current session';
+        ? t('chat.sessions.currentTabNumber', { index: status.tabIndex })
+        : t('chat.sessions.current');
     case 'open':
-      return `Open in ${tabLabel(status)}`;
+      return t('chat.sessions.openIn', { tab: tabLabel(status) });
     case 'closed':
       return formatSessionDate(timestamp);
   }
@@ -128,7 +131,7 @@ export function sessionStatusText(
 export function formatSessionDate(timestamp: number, now: Date = new Date()): string {
   const date = new Date(timestamp);
   if (date.toDateString() === now.toDateString()) {
-    return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
+    return date.toLocaleTimeString(getCurrentLocale(), { hour: '2-digit', minute: '2-digit', hour12: false });
   }
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return date.toLocaleDateString(getCurrentLocale(), { month: 'short', day: 'numeric' });
 }

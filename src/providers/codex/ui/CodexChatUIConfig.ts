@@ -1,3 +1,5 @@
+import { t } from '@/i18n/i18n';
+
 import type { ProviderChatUIConfig } from '../../../core/providers/types';
 import { OPENAI_PROVIDER_ICON } from '../../../shared/icons';
 import { codexModelPolicy } from '../CodexModelPolicy';
@@ -9,18 +11,18 @@ export const codexChatUIConfig: ProviderChatUIConfig = {
     const readOnly = getCodexProviderSettings(settings).safeMode === 'read-only';
     return [
       {
-        value: 'auto-review', label: 'Approve for me',
-        description: 'Auto-review extra access.',
+        value: 'auto-review', label: t('permissions.codex.approve'),
+        description: t('permissions.codex.review'),
       },
       {
-        value: 'normal', label: 'Ask for approval',
+        value: 'normal', label: t('permissions.codex.ask'),
         description: readOnly
-          ? 'Ask before edits or internet.'
-          : 'Ask before extra access.',
+          ? t('permissions.codex.askReadOnly')
+          : t('permissions.codex.askExtra'),
       },
       {
-        value: 'yolo', label: 'Full access', bypassesApprovals: true,
-        description: 'Unrestricted files and internet.',
+        value: 'yolo', label: t('permissions.codex.full'), bypassesApprovals: true,
+        description: t('permissions.codex.fullDescription'),
       },
     ];
   },

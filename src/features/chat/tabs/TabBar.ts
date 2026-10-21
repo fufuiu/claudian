@@ -1,5 +1,6 @@
 import type { TabBarItem, TabId } from '@/features/chat/tabs/ChatTab';
 import { scheduleAnimationFrame } from '@/features/chat/utils/animationFrame';
+import { t } from '@/i18n/i18n';
 
 const EXPANDED_TITLE_MAX_LENGTH = 32;
 const TRUNCATED_TITLE_SUFFIX = '...';
@@ -181,15 +182,15 @@ export class TabBar {
   }
 
   #getBadgeStatusLabel(item: TabBarItem): string {
-    if (item.isActive) return 'active';
-    if (item.attention?.kind === 'action-required') return 'needs your input';
-    if (item.isWorking) return 'working';
+    if (item.isActive) return t('chat.status.active');
+    if (item.attention?.kind === 'action-required') return t('chat.status.needsInputBadge');
+    if (item.isWorking) return t('chat.status.working');
     if (item.attention?.kind === 'review') {
       return item.attention.outcome === 'error'
-        ? 'stopped with an error, ready to review'
-        : 'finished, ready to review';
+        ? t('chat.status.errorReview')
+        : t('chat.status.finishedReview');
     }
-    return 'idle';
+    return t('chat.status.idle');
   }
 
   #truncateExpandedTitle(title: string): string {

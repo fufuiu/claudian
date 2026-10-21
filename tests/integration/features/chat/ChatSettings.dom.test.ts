@@ -25,6 +25,7 @@ import { updateTabProviderSettings } from '@/features/chat/tabs/tabProviderSetti
 import { refreshTabProviderUI } from '@/features/chat/tabs/tabProviderUI';
 import { createTabRuntime } from '@/features/chat/tabs/TabRuntimeFactory';
 import type { AssembledTabRuntime } from '@/features/chat/tabs/types';
+import { setLocale } from '@/i18n/i18n';
 import { getCodexProviderSettings, updateCodexProviderSettings } from '@/providers/codex/settings';
 import { updateCurrentGrokCatalog } from '@/providers/grok/settings';
 import { VaultMentionDataProvider } from '@/shared/mention/VaultMentionDataProvider';
@@ -41,6 +42,7 @@ afterEach(async () => {
   ProviderWorkspaceRegistry.clear();
   jest.restoreAllMocks();
   await releaseSideChatHarnesses();
+  setLocale('en');
 });
 
 function createSettings({ id, populate }: typeof modelCatalogCases[number], advertisesHigh = true): ClaudianSettings {
@@ -194,6 +196,24 @@ async function expectSubmission(
   }
   expect(ui.getByText(label, { selector: '.claudian-thinking-current' })).toBeDefined();
 }
+
+it.each(modelCatalogCases)('$id submits native reasoning values from Chinese controls', async (entry) => {
+  setLocale('zh-CN');
+  const { createTab, sessions, tabs } = createChatHarness(createSettings(entry), entry.id, entry.selected);
+  try {
+    const tab = await createTab();
+    const ui = within(tab.dom.inputComposerEl);
+    expect(ui.getByRole('textbox', { name: '消息' })).toBeDefined();
+    expect(reasoningStops(tab)).toEqual(expect.arrayContaining(['低', '中', '高']));
+    await selectReasoning(tab, 'low');
+    expect(reasoningSlider(tab).getAttribute('aria-valuetext')).toBe('低');
+    const expectedModel = entry.id === 'codex' ? 'openai-codex/gpt-5.5' : entry.selected;
+    await expectSubmission(tab, sessions, expectedModel, 'low');
+    expect(await axe(reasoningSlider(tab).closest('.claudian-toolbar-slider-group')!)).toHaveNoViolations();
+  } finally {
+    await Promise.all(tabs.map(destroyTab));
+  }
+});
 
 it.each(modelCatalogCases.flatMap(entry => [true, false].map(advertisesHigh => ({ ...entry, advertisesHigh }))))(
   '$id displays and submits the same settings (native High advertised: $advertisesHigh)', async (entry) => {

@@ -4,6 +4,7 @@ import type { ProviderRegistry } from '@/core/providers/ProviderRegistry';
 import type { ProviderSettingsCoordinator } from '@/core/providers/ProviderSettingsCoordinator';
 import type { ProviderId } from '@/core/providers/types';
 import type { ClaudianSettings, Conversation } from '@/core/types';
+import { t } from '@/i18n/i18n';
 
 import type { SettingsCoordinator } from './SettingsCoordinator';
 
@@ -52,8 +53,8 @@ export class ProviderChatOptionsReconciler {
       const providerName = deps.providers.getProviderDisplayName(providerId);
       new Notice(
         error instanceof Error
-          ? `Failed to reconcile ${providerName} models: ${error.message}`
-          : `Failed to reconcile ${providerName} models.`,
+          ? t('settings.reconcileModelsError', { provider: providerName, error: error.message })
+          : t('settings.reconcileModels', { provider: providerName }),
       );
     }
     if (didReconcile) {

@@ -1,3 +1,5 @@
+import { t } from '@/i18n/i18n';
+
 import { SessionSnapshotStore } from './app/conversations/SessionSnapshotStore';
 import { StartupProfiler } from './core/performance/StartupProfiler';
 // Must run before any SDK imports to patch Electron/Node.js realm incompatibility
@@ -101,13 +103,13 @@ export default class ClaudianPlugin extends Plugin {
       });
       this.vaultContentEvents.register(eventRef => this.registerEvent(eventRef));
 
-      this.addRibbonIcon('bot', 'Open Claudian', () => {
+      this.addRibbonIcon('bot', t('commands.openClaudian'), () => {
         void this.views.activateView();
       });
 
       this.addCommand({
         id: 'open-view',
-        name: 'Open chat view',
+        name: t('commands.openChat'),
         callback: () => {
           void this.views.activateView();
         },
@@ -125,10 +127,10 @@ export default class ClaudianPlugin extends Plugin {
 
       this.addCommand({
         id: 'copy-startup-diagnostics',
-        name: 'Copy startup diagnostics',
+        name: t('commands.copyDiagnostics'),
         callback: async () => {
           const copied = await StartupProfiler.copyToClipboard();
-          new Notice(copied ? 'Startup diagnostics copied to clipboard.' : 'Failed to copy startup diagnostics.');
+          new Notice(copied ? t('commands.diagnosticsCopied') : t('commands.diagnosticsFailed'));
         },
       });
 

@@ -32,6 +32,7 @@ import {
   StreamController,
 } from '@/features/chat/turns/StreamController';
 import { TurnCoordinator } from '@/features/chat/turns/TurnCoordinator';
+import { t } from '@/i18n/i18n';
 
 export interface SideChatRuntimeDeps {
   readonly plugin: ChatFeatureHost;
@@ -150,8 +151,8 @@ export class SideChatRuntime {
         this.#discardQueuedSubmissions();
         this.#backgroundResponses.discard();
         this.#lastError = ephemeral
-          ? 'This side chat has ended. Discard it and start a new side chat.'
-          : 'The provider session was replaced. Send again to resume the side chat.';
+          ? t('chat.sideChat.ended')
+          : t('chat.sideChat.replaced');
         this.#refreshStatus();
       },
       onRequestedEvent: event => this.#handleExecutionEvent(event),
@@ -172,9 +173,9 @@ export class SideChatRuntime {
       providerId: this.providerId,
       assertCurrent: () => {
         if (this.#disposed || !this.state.messages.some(message => message.toolCalls?.includes(tool))) {
-          throw new Error('This side chat is no longer available.');
+          throw new Error(t('chat.sideChat.unavailable'));
         }
-        if (this.state.cancelRequested) throw new Error('The answer was not sent. Please try again.');
+        if (this.state.cancelRequested) throw new Error(t('chat.errors.answerNotSent'));
       },
       prepare: reply => ({
         steer: async () => {
@@ -255,7 +256,7 @@ export class SideChatRuntime {
 
   /** Preparation belongs to this child, including cancellation and disposal. */
   async prepareSubmission<T>(prepare: (signal: AbortSignal) => Promise<T>): Promise<T> {
-    if (this.#disposed || this.isWorking) throw new Error('The side chat is busy.');
+    if (this.#disposed || this.isWorking) throw new Error(t('chat.sideChat.busy'));
     const controller = new AbortController();
     const pending = prepare(controller.signal);
     this.#preparation = { controller, pending };
@@ -397,7 +398,7 @@ export class SideChatRuntime {
       } else if (result.status === 'error' || result.status === 'missing-session') {
         failed = true;
         this.#lastError = result.error?.message
-          ?? 'The side chat provider session is no longer available.';
+          ?? t('chat.sideChat.providerUnavailable');
         await this.#stream.appendError(this.#lastError);
       }
     } catch (error) {

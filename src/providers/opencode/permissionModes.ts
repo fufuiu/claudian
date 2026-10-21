@@ -1,3 +1,5 @@
+import { t } from '@/i18n/i18n';
+
 import type {
   ProviderPermissionModeOption,
   ProviderPermissionModePolicy,
@@ -11,11 +13,11 @@ export const OPENCODE_PERMISSION_MODE_POLICY: ProviderPermissionModePolicy = Obj
 });
 
 export const OPENCODE_PERMISSION_MODE_OPTIONS: readonly ProviderPermissionModeOption[] = Object.freeze([
-  { value: 'normal', label: 'Ask', description: 'Ask when OpenCode permission rules require it' },
+  { value: 'normal', get label() { return t('permissions.opencode.normal.label'); }, get description() { return t('permissions.opencode.normal.description'); } },
   {
     value: 'yolo',
-    label: 'YOLO',
-    description: 'Accept all permissions not explicitly denied',
+    get label() { return t('permissions.opencode.yolo.label'); },
+    get description() { return t('permissions.opencode.yolo.description'); },
     bypassesApprovals: true,
   },
 ]);

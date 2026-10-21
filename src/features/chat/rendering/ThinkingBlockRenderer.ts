@@ -1,4 +1,5 @@
 import { collapseElement, setupCollapsible } from '@/features/chat/rendering/collapsible';
+import { t } from '@/i18n/i18n';
 
 export type RenderContentFn = (el: HTMLElement, markdown: string) => Promise<void>;
 
@@ -36,13 +37,13 @@ export function createThinkingBlock(
   parentEl: HTMLElement,
   options: ThinkingBlockOptions = {},
 ): ThinkingBlockState {
-  const { wrapperEl, headerEl, labelEl, contentEl } = createThinkingBlockElements(parentEl, 'Thinking 0s...');
+  const { wrapperEl, headerEl, labelEl, contentEl } = createThinkingBlockElements(parentEl, t('chat.status.thinkingDuration', { seconds: 0 }));
   const startTime = Date.now();
 
   // Start timer interval to update label every second
   const timerInterval = window.setInterval(() => {
     const elapsed = Math.floor((Date.now() - startTime) / 1000);
-    labelEl.setText(`Thinking ${elapsed}s...`);
+    labelEl.setText(t('chat.status.thinkingDuration', { seconds: elapsed }));
   }, 1000);
 
   const state: ThinkingBlockState = {
@@ -73,7 +74,7 @@ export function finalizeThinkingBlock(state: ThinkingBlockState): number {
   const durationSeconds = Math.floor((Date.now() - state.startTime) / 1000);
 
   // Update label to show final duration (without "...")
-  state.labelEl.setText(`Thought for ${durationSeconds}s`);
+  state.labelEl.setText(t('chat.status.thoughtDuration', { seconds: durationSeconds }));
 
   // Collapse when done and sync state
   const header = state.wrapperEl.querySelector('.claudian-thinking-header');
@@ -96,7 +97,7 @@ export function renderStoredThinkingBlock(
   durationSeconds: number | undefined,
   renderContent: RenderContentFn
 ): HTMLElement {
-  const label = durationSeconds !== undefined ? `Thought for ${durationSeconds}s` : 'Thought';
+  const label = durationSeconds !== undefined ? t('chat.status.thoughtDuration', { seconds: durationSeconds }) : t('chat.status.thought');
   const { wrapperEl, headerEl, contentEl } = createThinkingBlockElements(parentEl, label, content);
   setupCollapsible(wrapperEl, headerEl, contentEl, { isExpanded: false }, {
     onFirstExpand: () => {

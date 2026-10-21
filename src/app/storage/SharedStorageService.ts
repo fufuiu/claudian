@@ -5,6 +5,7 @@ import type { AppTabManagerState } from '@/core/bootstrap/tabManagerState';
 import { getInstallationKey, type InstallationKey } from '@/core/device/InstallationKey';
 import { VaultFileAdapter } from '@/core/storage/VaultFileAdapter';
 import type { ClaudianSettings } from '@/core/types';
+import { t } from '@/i18n/i18n';
 
 import { ClaudianSettingsStorage, type StoredClaudianSettings } from '../settings/ClaudianSettingsStorage';
 import { ConversationPersistenceStore } from './ConversationPersistenceStore';
@@ -42,7 +43,7 @@ export class SharedStorageService implements SharedAppStorage {
       migrateSessionSidecars(this.adapter).then(paths => {
         this.obsoleteSessionInputs = paths;
       }).catch(() => {
-        new Notice('Failed to clean up obsolete session files; will retry next launch');
+        new Notice(t('chat.errors.cleanupSessions'));
       }),
     ]);
     if (settings.status === 'rejected') throw settings.reason;
@@ -57,7 +58,7 @@ export class SharedStorageService implements SharedAppStorage {
       }
       this.obsoleteSessionInputs = [];
     } catch {
-      new Notice('Failed to clean up obsolete session files; will retry next launch');
+      new Notice(t('chat.errors.cleanupSessions'));
     }
   }
 

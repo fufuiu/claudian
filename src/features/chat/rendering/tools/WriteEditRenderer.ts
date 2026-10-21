@@ -1,12 +1,14 @@
 import { setIcon } from 'obsidian';
 
 import { getToolIcon } from '@/core/tools/toolIcons';
+import { TOOL_WRITE } from '@/core/tools/toolNames';
 import type { ToolCallInfo, ToolDiffData } from '@/core/types';
 import type { DiffLine } from '@/core/types/diff';
 import { setupCollapsible } from '@/features/chat/rendering/collapsible';
 import { renderDiffContent, renderDiffStats } from '@/features/chat/rendering/tools/DiffRenderer';
 import { fileNameOnly } from '@/features/chat/rendering/tools/toolContentPrimitives';
 import { getToolLabel } from '@/features/chat/rendering/tools/toolPresentation';
+import { t } from '@/i18n/i18n';
 
 export interface WriteEditState {
   wrapperEl: HTMLElement;
@@ -50,7 +52,7 @@ function createWriteEditElements(parentEl: HTMLElement, toolCall: ToolCallInfo):
   setIcon(iconEl, getToolIcon(toolName));
 
   const nameEl = headerEl.createDiv({ cls: 'claudian-write-edit-name' });
-  nameEl.setText(toolName);
+  nameEl.setText(t(toolName === TOOL_WRITE ? 'chat.tools.names.write' : 'chat.tools.names.edit'));
   const summaryEl = headerEl.createDiv({ cls: 'claudian-write-edit-summary' });
   summaryEl.setText(fileNameOnly(filePath) || 'file');
 
@@ -80,12 +82,12 @@ export function createWriteEditBlock(
   } = createWriteEditElements(parentEl, toolCall);
 
   statusEl.addClass('status-running');
-  statusEl.setAttribute('aria-label', 'Status: running');
+  statusEl.setAttribute('aria-label', t('chat.tools.statusRunning'));
 
   // Initial loading state
   const loadingRow = contentEl.createDiv({ cls: 'claudian-write-edit-diff-row' });
   const loadingEl = loadingRow.createDiv({ cls: 'claudian-write-edit-loading' });
-  loadingEl.setText('Writing...');
+  loadingEl.setText(t('chat.tools.writing'));
 
   // Create state object
   const state: WriteEditState = {
@@ -139,21 +141,21 @@ export function finalizeWriteEditBlock(state: WriteEditState, isError: boolean):
   if (isError) {
     state.statusEl.addClass('status-error');
     setIcon(state.statusEl, 'x');
-    state.statusEl.setAttribute('aria-label', 'Status: error');
+    state.statusEl.setAttribute('aria-label', t('chat.tools.statusError'));
 
     // Show error in content if no diff was shown
     if (!state.diffLines) {
       state.contentEl.empty();
       const row = state.contentEl.createDiv({ cls: 'claudian-write-edit-diff-row' });
       const errorEl = row.createDiv({ cls: 'claudian-write-edit-error' });
-      errorEl.setText(state.toolCall.result || 'Error');
+      errorEl.setText(state.toolCall.result || t('common.error'));
     }
   } else if (!state.diffLines) {
     // Success but no diff data - clear the "Writing..." loading text and show DONE
     state.contentEl.empty();
     const row = state.contentEl.createDiv({ cls: 'claudian-write-edit-diff-row' });
     const doneEl = row.createDiv({ cls: 'claudian-write-edit-done-text' });
-    doneEl.setText('DONE');
+    doneEl.setText(t('common.done'));
   }
 
   // Update wrapper class
@@ -198,7 +200,7 @@ export function renderStoredWriteEdit(
       errorEl.setText(toolCall.result);
     } else {
       const doneEl = row.createDiv({ cls: 'claudian-write-edit-done-text' });
-      doneEl.setText(isError ? 'ERROR' : 'DONE');
+      doneEl.setText(isError ? t('common.errorUpper') : t('common.done'));
     }
   };
   const eager = toolCall.status === 'running';

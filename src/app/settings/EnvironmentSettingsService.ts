@@ -11,6 +11,7 @@ import type { ProviderSettingsCoordinator } from '@/core/providers/ProviderSetti
 import type { ProviderId } from '@/core/providers/types';
 import type { ClaudianSettings } from '@/core/types';
 import type { EnvironmentScope } from '@/core/types/settings';
+import { t } from '@/i18n/i18n';
 
 import type { RuntimeSettingsCoordinator } from './RuntimeSettingsCoordinator';
 import type { SettingsMutation } from './SettingsCoordinator';
@@ -113,8 +114,8 @@ export class EnvironmentSettingsService {
             await this.deps.onEnvironmentApplied(affectedProviderIds);
 
             const noticeText = reconciliation.sessionInvalidationProviderIds.length > 0
-              ? 'Environment variables applied. Sessions will be rebuilt on next message.'
-              : 'Environment variables applied.';
+              ? t('settings.environmentAppliedRebuild')
+              : t('settings.environmentApplied');
             new Notice(noticeText);
           },
         },

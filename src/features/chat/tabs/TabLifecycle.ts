@@ -2,6 +2,7 @@ import { Notice } from 'obsidian';
 
 import type { ChatFeatureHost } from '@/features/chat/ChatFeatureHost';
 import type { AssembledTabRuntime, TabRuntimeResourceState } from '@/features/chat/tabs/types';
+import { t } from '@/i18n/i18n';
 
 export interface TabRuntimeCleanupFailure {
   readonly resource: string;
@@ -155,7 +156,7 @@ async function destroyTabOnce(tab: AssembledTabRuntime): Promise<void> {
     try {
       await tab.controllers.conversationController.save(cancelledActiveTurn);
     } catch {
-      new Notice('Background task state could not be saved before closing the tab.');
+      new Notice(t('chat.errors.backgroundSave'));
     }
   }
   await captureTeardownFailure(
@@ -185,5 +186,5 @@ export function getTabTitle(tab: Pick<AssembledTabRuntime, 'conversationId'>, pl
       return conversation.title;
     }
   }
-  return 'New Chat';
+  return t('chat.sessions.newChat');
 }

@@ -1,6 +1,7 @@
 import type { ProviderModeSelectorConfig, ProviderUIOption } from '@/core/providers/types';
 import { runToolbarAction, ToolbarMenu, type ToolbarMenuGroup } from '@/features/chat/composer/toolbar/ToolbarMenu';
 import type { ToolbarCallbacks } from '@/features/chat/composer/toolbar/types';
+import { t } from '@/i18n/i18n';
 
 /** Provider mode choice; shown only when the provider supplies exactly two options. */
 export class ModeSelector {
@@ -12,7 +13,7 @@ export class ModeSelector {
     this.callbacks = callbacks;
     this.menu = new ToolbarMenu(parentEl, {
       anchorCls: 'claudian-mode-selector',
-      menuLabel: 'Mode',
+      menuLabel: t('chat.toolbar.mode'),
       closeOnSelect: true,
       group: menuGroup,
       onOpen: () => this.updateDisplay(),
@@ -65,7 +66,7 @@ export class ModeSelector {
           runToolbarAction(async () => {
             await this.callbacks.onModeChange(option.value);
             this.updateDisplay();
-          }, 'Failed to change mode');
+          }, t('chat.errors.modeChange'));
         },
       });
     }

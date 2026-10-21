@@ -118,7 +118,7 @@ export class SideChatController {
     if (consumed) this.#clearComposer();
     const command = new SideChatCommandSubmission(this.deps.plugin, { content: argument, images, context }, error => {
       if (consumed) this.deps.drafts.restore('main', original, { merge: true });
-      if (error) new Notice(error instanceof Error ? error.message : 'Could not prepare the side command.');
+      if (error) new Notice(error instanceof Error ? error.message : t('chat.sideChat.commandFailed'));
     });
     if (this.#runtime) {
       // A collapsed existing child is resumed, never replaced.
@@ -281,7 +281,7 @@ export class SideChatController {
     if (!parent.isLive
       || parent.conversationId !== source.conversationId
       || (fullSession && (parent.isStreaming || parent.lastMessageId !== source.messages.at(-1)?.id))) {
-      throw new Error('The source conversation changed. Discard this side chat and start a new one.');
+      throw new Error(t('chat.sideChat.sourceChanged'));
     }
   }
 
@@ -330,7 +330,7 @@ export class SideChatController {
       lifecycleRegistry: this.deps.plugin.providerHost.executionLifecycleRegistry,
       messagesEl: panel.messagesEl,
       onError: error => {
-        new Notice(error instanceof Error ? error.message : 'Side chat execution failed.');
+        new Notice(error instanceof Error ? error.message : t('chat.sideChat.executionFailed'));
       },
       onStatusChanged: () => this.#refreshPanel(),
       plugin: this.deps.plugin,
@@ -426,7 +426,7 @@ function describeUnavailable(reason: ForkSourceUnavailableReason): string {
     case 'no-checkpoint':
       return t('chat.sideChat.unavailableNoCheckpoint');
     case 'not-latest-reply':
-      return 'This provider can fork only from the latest reply.';
+      return t('chat.errors.forkLatest');
     case 'no-session':
       return t('chat.sideChat.unavailableNoSession');
   }

@@ -39,7 +39,7 @@ export class ClaudianSettingTab extends PluginSettingTab {
     super(app, plugin);
     this.host = host;
     this.textEdits = new DebouncedSettingsWriter(mutation => host.mutateSettings(mutation),
-      () => { new Notice('Failed to save settings'); });
+      () => { new Notice(t('chat.errors.saveSettings')); });
   }
 
   getSettingDefinitions(): SettingDefinitionItem[] {
@@ -108,7 +108,7 @@ export class ClaudianSettingTab extends PluginSettingTab {
       providerContent.empty();
       providerContent.createDiv({
         cls: 'claudian-settings-provider-loading',
-        text: `Loading ${ProviderRegistry.getProviderDisplayName(providerId)} settings...`,
+        text: t('settings.providerSettings.loading', { provider: ProviderRegistry.getProviderDisplayName(providerId) }),
       });
 
       try {
@@ -140,7 +140,7 @@ export class ClaudianSettingTab extends PluginSettingTab {
         if (renderGeneration !== this.renderGeneration) return;
         renderedProviderIds.delete(providerId);
         providerContent.empty();
-        const message = error instanceof Error ? error.message : 'Unknown error';
+        const message = error instanceof Error ? error.message : t('common.unknownError');
         providerContent.createDiv({
           cls: 'claudian-setting-validation claudian-setting-validation-error',
           text: t('settings.providerSettings.loadFailed', { message }),
@@ -448,7 +448,7 @@ export class ClaudianSettingTab extends PluginSettingTab {
             }
             const selected = this.host.settings.titleGenerationModel;
             if (selected && !Array.from(dropdown.selectEl.options).some(option => option.value === selected)) {
-              dropdown.addOption(selected, `Unavailable: ${selected}`);
+              dropdown.addOption(selected, t('settings.titleModel.unavailable', { model: selected }));
               dropdown.selectEl.options[dropdown.selectEl.options.length - 1].disabled = true;
             }
             dropdown.setValue(this.host.settings.titleGenerationModel || '');
@@ -726,7 +726,7 @@ export class ClaudianSettingTab extends PluginSettingTab {
         cls: 'claudian-context-limits-input',
         value: currentValue ? formatContextLimit(currentValue) : '',
       });
-      inputEl.setAttribute('aria-label', `Context window for ${modelId}`);
+      inputEl.setAttribute('aria-label', t('settings.customContextLimits.label', { model: modelId }));
 
       const validationEl = inputWrapper.createDiv({ cls: 'claudian-context-limit-validation claudian-hidden' });
 

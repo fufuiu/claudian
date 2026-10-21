@@ -35,7 +35,7 @@ export class BuiltInCommandController {
   /** `capabilities` are the destination provider's, resolved when the command was submitted. */
   async execute(command: BuiltInCommand, capabilities: ProviderCapabilities): Promise<void> {
     if (!isBuiltInCommandSupported(command, capabilities)) {
-      new Notice(`/${command.name} is not supported by this provider.`);
+      new Notice(t('chat.errors.commandUnsupported', { command: command.name }));
       return;
     }
 
@@ -58,11 +58,11 @@ export class BuiltInCommandController {
         break;
       case 'fork': {
         if (!capabilities.supportsFork) {
-          new Notice('Fork is not supported by this provider.');
+          new Notice(t('chat.errors.forkUnsupported'));
           return;
         }
         if (!this.deps.onForkAll) {
-          new Notice('Fork not available.');
+          new Notice(t('chat.errors.forkUnavailable'));
           return;
         }
         await this.deps.onForkAll();
@@ -72,10 +72,10 @@ export class BuiltInCommandController {
         try {
           const toggled = await this.deps.toggleFastMode?.() ?? false;
           if (!toggled) {
-            new Notice('Fast mode is not available for this model.');
+            new Notice(t('chat.errors.fastUnavailable'));
           }
         } catch {
-          new Notice('Failed to toggle fast mode.');
+          new Notice(t('chat.errors.fastFailed'));
         }
         break;
       }
@@ -93,7 +93,7 @@ export class BuiltInCommandController {
         const unknownAction = typeof (command as { action?: unknown }).action === 'string'
           ? (command as { action: string }).action
           : 'unknown';
-        new Notice(`Unknown command: ${unknownAction}`);
+        new Notice(t('chat.errors.unknownCommand', { command: unknownAction }));
         break;
       }
     }
@@ -125,7 +125,7 @@ export class BuiltInCommandController {
 
     const conversations = this.deps.plugin.getConversationList();
     if (conversations.length === 0) {
-      new Notice('No conversations to resume');
+      new Notice(t('chat.errors.noResume'));
       return;
     }
 
@@ -142,7 +142,7 @@ export class BuiltInCommandController {
           this.destroyResumeDropdown();
           openConversation(id).catch((err: unknown) => {
             const msg = err instanceof Error ? err.message : String(err);
-            new Notice(`Failed to open conversation: ${msg}`);
+            new Notice(t('chat.errors.openConversation', { error: msg }));
           });
         },
         onDismiss: () => {

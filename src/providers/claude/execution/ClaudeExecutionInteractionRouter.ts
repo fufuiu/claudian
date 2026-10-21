@@ -3,6 +3,8 @@ import type {
   PermissionResult,
 } from '@anthropic-ai/claude-agent-sdk';
 
+import { t } from '@/i18n/i18n';
+
 import {
   type PendingInteraction,
   PendingInteractionLedger,
@@ -24,15 +26,15 @@ export interface ClaudeExecutionInteractionDeps {
 }
 
 const ONE_TIME_DECISION_OPTIONS: readonly ProviderApprovalDecisionOption[] = [
-  { label: 'Deny', value: 'deny', decision: 'deny' },
-  { label: 'Allow once', value: 'allow', decision: 'allow' },
+  { get label() { return t('chat.questions.deny'); }, value: 'deny', decision: 'deny' },
+  { get label() { return t('chat.questions.allowOnce'); }, value: 'allow', decision: 'allow' },
 ];
 
 // Claude Code decides what an "Always allow" persists and where; offer it only
 // when the SDK suggested permission updates to apply.
 const PERSISTABLE_DECISION_OPTIONS: readonly ProviderApprovalDecisionOption[] = [
   ...ONE_TIME_DECISION_OPTIONS,
-  { label: 'Always allow', value: 'allow-always', decision: 'allow-always' },
+  { get label() { return t('chat.questions.alwaysAllow'); }, value: 'allow-always', decision: 'allow-always' },
 ];
 
 export class ClaudeExecutionInteractionRouter {

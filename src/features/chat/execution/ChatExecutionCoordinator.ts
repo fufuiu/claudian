@@ -44,6 +44,7 @@ import {
   reduceRequestedTurnIdentity,
 } from '@/features/chat/execution/RequestedTurnIdentity';
 import { SessionEventStream } from '@/features/chat/execution/SessionEventStream';
+import { t } from '@/i18n/i18n';
 import { throwIfAborted } from '@/utils/abort';
 import { toError } from '@/utils/error';
 
@@ -371,7 +372,7 @@ export class ChatExecutionCoordinator {
 
   async execute(submission: ChatTurnSubmission, signal?: AbortSignal): Promise<ChatExecutionResult> {
     this.#assertAvailable();
-    if (this.#branchRecoveryRequired) throw new ChatExecutionPreHandoffError('Conversation branch recovery must finish before sending.');
+    if (this.#branchRecoveryRequired) throw new ChatExecutionPreHandoffError(t('chat.errors.branchRecovery'));
     if (this.#requestController) throw new Error('A chat execution is already active');
     const controller = new AbortController();
     this.#requestController = controller;
@@ -587,10 +588,10 @@ export class ChatExecutionCoordinator {
 
   async #changeConversationBranch(request: ConversationBranchRequest | ConversationBranchRecoveryRequest): Promise<ConversationBranchResult> {
     if (this.#branchRecoveryRequired && 'userMessageId' in request) {
-      return { status: 'recovery-required', error: 'Reconcile the current branch before navigating again.' };
+      return { status: 'recovery-required', error: t('chat.errors.branchReconcileRequired') };
     }
     if (this.#requestController || this.#protectedOperationCount > 0 || this.hasBackgroundWork || this.#interactions.hasPending) {
-      return { status: 'failed', error: 'Conversation is busy.' };
+      return { status: 'failed', error: t('chat.errors.conversationBusy') };
     }
     const controller = new AbortController();
     this.#requestController = controller;
@@ -603,7 +604,7 @@ export class ChatExecutionCoordinator {
         await this.prepare();
         const binding = this.#requireCurrentSessionBinding();
         if (conversation !== this.#conversation || !isBranchableExecutionSession(binding.session)) {
-          return { status: 'failed', error: 'Conversation branching is unavailable.' };
+          return { status: 'failed', error: t('chat.errors.branchUnavailable') };
         }
         await this.deps.persistence.assertConversationExecutionAuthority(
           binding.conversation.conversationId, binding.bindingId, binding.generation,
@@ -612,7 +613,7 @@ export class ChatExecutionCoordinator {
         const result = 'userMessageId' in request
           ? await binding.session.navigateConversationBranch({ ...request, signal: controller.signal })
           : await binding.session.reconcileConversationBranch({ ...request, signal: controller.signal });
-        if (!this.#isBindingCurrent(binding)) return { status: 'failed', error: 'Conversation changed during branching.' };
+        if (!this.#isBindingCurrent(binding)) return { status: 'failed', error: t('chat.errors.branchChanged') };
         try {
           await this.#persistSnapshot(binding, binding.session.getSnapshot(), true);
           if (result.status !== 'failed') this.#branchRecoveryRequired = result.status === 'recovery-required';
@@ -639,7 +640,7 @@ export class ChatExecutionCoordinator {
     await this.prepare();
     const session = this.#requireCurrentSessionBinding().session;
     if (!isRewindableExecutionSession(session)) {
-      return { canRewind: false, error: 'Rewind is not supported by this provider.' };
+      return { canRewind: false, error: t('chat.errors.rewindUnsupported') };
     }
     return session.previewRewind(userMessageId, assistantMessageId, mode);
   }
@@ -664,7 +665,7 @@ export class ChatExecutionCoordinator {
     await this.prepare();
     const binding = this.#requireCurrentSessionBinding();
     if (!isRewindableExecutionSession(binding.session)) {
-      return { canRewind: false, error: 'Rewind is not supported by this provider.' };
+      return { canRewind: false, error: t('chat.errors.rewindUnsupported') };
     }
     const result = await binding.session.rewind(
       userMessageId,

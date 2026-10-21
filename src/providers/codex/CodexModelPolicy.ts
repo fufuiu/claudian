@@ -1,3 +1,5 @@
+import { t } from '@/i18n/i18n';
+
 import {
   DEFAULT_REASONING_VALUE,
   formatReasoningValueLabel,
@@ -28,13 +30,6 @@ import {
   getCodexProviderSettings,
   getVisibleCodexModelIds,
 } from './settings';
-
-const EFFORT_LEVELS: ProviderUIOption[] = [
-  ...CODEX_FALLBACK_REASONING_EFFORT_VALUES,
-].map(value => ({ value, label: formatReasoningValueLabel(value) }));
-
-
-const DEFAULT_SERVICE_TIER_LABEL = 'Standard';
 
 
 function getVisibleDiscoveredModels(settings: Record<string, unknown>) {
@@ -87,7 +82,7 @@ export const codexModelPolicy: ProviderModelPolicy = {
       modelId,
     );
     if (!model) {
-      return [...EFFORT_LEVELS];
+      return CODEX_FALLBACK_REASONING_EFFORT_VALUES.map(value => ({ value, label: formatReasoningValueLabel(value) }));
     }
 
     const options = getCodexReasoningEffortOptions(model, codexSettings.enableUltraEffort);
@@ -156,7 +151,7 @@ export const codexModelPolicy: ProviderModelPolicy = {
 
     return {
       inactiveValue: CODEX_DEFAULT_SERVICE_TIER,
-      inactiveLabel: DEFAULT_SERVICE_TIER_LABEL,
+      inactiveLabel: t('chat.toolbar.standard'),
       activeValue: tier.id,
       activeLabel: tier.name,
       isActive: resolveCodexModelServiceTier(model, settings.serviceTier) === tier.id,

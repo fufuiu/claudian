@@ -25,6 +25,7 @@ import type { StreamController } from '@/features/chat/turns/StreamController';
 import type { TurnCoordinator } from '@/features/chat/turns/TurnCoordinator';
 import type { TurnQueue } from '@/features/chat/turns/TurnQueue';
 import type { TurnSteering } from '@/features/chat/turns/TurnSteering';
+import { t } from '@/i18n/i18n';
 import { toError } from '@/utils/error';
 
 /** A main turn admitted for execution, with everything captured when it was admitted. */
@@ -191,7 +192,7 @@ export class MainTurnExecution {
     this.awaitingProviderAssistantStart = true;
 
     streamController.thinkingIndicator.show(
-      isCompact ? 'Compacting...' : undefined,
+      isCompact ? t('chat.status.compacting') : undefined,
       isCompact ? 'claudian-thinking--compact' : undefined,
     );
     state.responseStartTime = performance.now();
@@ -220,14 +221,14 @@ export class MainTurnExecution {
     if (this.#retainUnsentTurnOnClose(signal, assistantMsg.id) || restoreCancelledInput()) return;
     if (!ready) {
       if (this.#retainUnsentTurnOnClose(signal, assistantMsg.id)) return;
-      new Notice('Failed to initialize agent execution. Please try again.');
+      new Notice(t('chat.errors.initialize'));
       rollbackUnstartedTurn();
       return;
     }
 
     const coordinator = this.deps.getExecutionCoordinator();
     if (!coordinator) {
-      new Notice('Agent execution is not available. Please reload the plugin.');
+      new Notice(t('chat.errors.agentUnavailable'));
       rollbackUnstartedTurn();
       return;
     }
@@ -295,12 +296,12 @@ export class MainTurnExecution {
           this.#finishAcceptedMissingSession(streamGeneration);
         }
         const notice = resolution === 'deleted'
-            ? 'The provider session no longer exists. Its Claudian record was removed; send again to start a new session.'
+            ? t('chat.errors.sessionRemoved')
             : resolution === 'reset'
-              ? 'The provider session no longer exists. Claudian preserved the recoverable history; send again to rebuild the session.'
+              ? t('chat.errors.sessionRecoverable')
               : resolution === 'preserved'
-                ? 'The provider session no longer exists. Claudian preserved its record because the remaining history could not be verified.'
-                : 'The provider session no longer exists. Send again to start a new session.';
+                ? t('chat.errors.sessionUnverified')
+                : t('chat.errors.sessionMissing');
         new Notice(notice);
         wasInvalidated = true;
       } else if (result.status === 'error' && result.error) {
@@ -313,12 +314,12 @@ export class MainTurnExecution {
         restoreUnsentInput(admittedTurnRequest);
         this.#rollbackFailedTurn(messagesBeforeTurn, hadPendingConversationSave);
         didRollbackUnsentTurn = true;
-        if (!signal.aborted) new Notice('Message was not sent. Please try again.');
+        if (!signal.aborted) new Notice(t('chat.errors.notSent'));
         this.reportDeferredReview();
       } else {
         hadExecutionError = true;
         shouldReportReviewableSettlement = true;
-        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        const errorMsg = error instanceof Error ? error.message : t('common.unknownError');
         await streamController.appendError(errorMsg);
         currentReviewableSettlementReporter =
           this.deps.captureReviewableSettlement?.('error') ?? null;

@@ -1,6 +1,7 @@
 import { setIcon } from 'obsidian';
 
 import type { ToolCallInfo } from '@/core/types';
+import { t } from '@/i18n/i18n';
 
 const STATUS_ICONS: Partial<Record<ToolCallInfo['status'], string>> = {
   completed: 'check',
@@ -8,12 +9,16 @@ const STATUS_ICONS: Partial<Record<ToolCallInfo['status'], string>> = {
   blocked: 'shield-off',
 };
 
+export function getToolStatusLabel(status: ToolCallInfo['status'] | 'cancelled'): string {
+  return t(`chat.tools.${status}Status`);
+}
+
 /** Replaces a tool status indicator's class, label and icon; running shows no icon. */
 export function setToolStatus(
   statusEl: HTMLElement,
   status: ToolCallInfo['status'],
   baseClass: string,
-  ariaLabel = `Status: ${status}`,
+  ariaLabel = t('chat.tools.status', { status: getToolStatusLabel(status) }),
 ): void {
   statusEl.className = baseClass;
   statusEl.empty();

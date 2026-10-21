@@ -1,10 +1,11 @@
+import { t } from '@/i18n/i18n';
+
 /**
  * Claudian - Built-in slash commands
  *
  * System commands that perform actions (not prompt expansions).
  * These are handled separately from user-defined slash commands.
  */
-
 import { ProviderRegistry } from '../providers/ProviderRegistry';
 import type { ProviderCapabilities, ProviderId } from '../providers/types';
 
@@ -44,31 +45,31 @@ export const BUILT_IN_COMMANDS: BuiltInCommand[] = [
   {
     name: 'clear',
     aliases: ['new'],
-    description: 'Start a new conversation',
+    get description() { return t('commands.descriptions.clear'); },
     action: 'clear',
   },
   {
     name: 'resume',
-    description: 'Resume a previous conversation',
+    get description() { return t('commands.descriptions.resume'); },
     action: 'resume',
     requiredCapability: 'supportsNativeHistory',
   },
   {
     name: 'fork',
-    description: 'Fork entire conversation to new session',
+    get description() { return t('commands.descriptions.fork'); },
     action: 'fork',
     requiredCapability: 'supportsFork',
   },
   {
     name: 'fast',
-    description: 'Toggle fast mode',
+    get description() { return t('commands.descriptions.fast'); },
     action: 'fast',
     requiredCapability: 'supportsFastMode',
   },
   {
     name: 'side',
     aliases: ['btw'],
-    description: 'Ask a temporary side question from the latest reply',
+    get description() { return t('commands.descriptions.side'); },
     action: 'side',
     argumentHint: 'prompt',
     requiredCapability: 'supportsFork',

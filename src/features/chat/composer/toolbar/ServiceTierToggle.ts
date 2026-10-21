@@ -5,6 +5,7 @@ import { toggleServiceTier } from '@/features/chat/composer/toggleServiceTier';
 import type { ModelMenuPart, ModelSelector } from '@/features/chat/composer/toolbar/ModelSelector';
 import { runToolbarAction } from '@/features/chat/composer/toolbar/ToolbarMenu';
 import type { ToolbarCallbacks } from '@/features/chat/composer/toolbar/types';
+import { t } from '@/i18n/i18n';
 
 /** Fast-mode switch in the model menu, with an indicator on the model button while active. */
 export class ServiceTierToggle {
@@ -33,26 +34,26 @@ export class ServiceTierToggle {
     const sectionEl = this.part.sectionEl;
     sectionEl.empty();
     this.part.chipEl.toggleClass('claudian-hidden', !toggleConfig?.isActive);
-    this.part.describe(toggleConfig?.isActive ? 'fast mode on' : null);
+    this.part.describe(toggleConfig?.isActive ? t('chat.toolbar.fastOn') : null);
     if (!toggleConfig) {
       sectionEl.addClass('claudian-hidden');
       return;
     }
 
     sectionEl.removeClass('claudian-hidden');
-    const currentLabel = toggleConfig.isActive ? toggleConfig.activeLabel : toggleConfig.inactiveLabel;
+    const currentLabel = toggleConfig.isActive ? t('chat.toolbar.fast') : t('chat.toolbar.standard');
     const itemEl = this.part.menu.createItem(sectionEl, {
       role: 'switch',
       checked: toggleConfig.isActive,
       tabbable: true,
-      label: 'Fast mode',
+      label: t('chat.toolbar.fastMode'),
       cls: 'claudian-toolbar-popover-switch-row',
-      title: [`Fast mode: ${currentLabel}`, toggleConfig.description].filter(Boolean).join('\n'),
+      title: [t('chat.toolbar.fastLabel', { label: currentLabel }), toggleConfig.description].filter(Boolean).join('\n'),
       leadingIcon: 'zap',
       onSelect: () => {
         runToolbarAction(async () => {
           await this.toggle();
-        }, 'Failed to change service tier');
+        }, t('chat.errors.tierChange'));
       },
     });
     itemEl.createSpan({ cls: `claudian-toggle-switch${toggleConfig.isActive ? ' active' : ''}` });

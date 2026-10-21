@@ -1,5 +1,57 @@
 # AGENTS.md
 
+## 本地汉化维护与交接（2026-10-07）
+
+这是用户自用的 Claudian 简体中文汉化源码仓库，与同级 `obsidian-git` 仓库
+一样在本地维护。以下为交接记录；接手时先检查实际 Git 和安装状态。
+
+### 当前状态
+
+- 本地维护分支：`zh-cn`，保留原来的 `main` 分支。
+- 官方远程：`origin` → `https://github.com/YishenTu/claudian.git`。
+  不把它当成用户自己的 fork，不向官方仓库推送本地汉化。
+- 本次基于上游 `2.3.15`，基线提交为
+  `929ff4f5ad9bc1338ab975c5e10309d0480d3fe5`。
+- 汉化已完成并安装试用；**源码、对应测试及本交接文档尚未提交**，分支 HEAD
+  仍为上述基线。创建分支不等于已将汉化保存到提交历史。
+- 复用现有 i18n，补齐聊天、会话管理、设置、命令、权限确认、工具结果、
+  行内编辑、欢迎语、状态消息和无障碍标签。新安装默认 `zh-CN`；已保存的
+  语言选择保留。品牌、模型名称、用户内容及提供商返回的原始内容保留原文。
+- 上次验证使用 Node `24.16.0`：类型检查、lint、生产构建通过；7312 个 Jest
+  测试通过，2 个跳过；76 项脚本检查通过。性能检查通过，冷模块加载约
+  81.6 ms，超过 50 ms 提示线，未达到 150 ms 复核线。
+- 已通过 Obsidian CLI 重载并打开真实聊天面板，确认输入提示、推理强度、
+  权限选项和命令菜单显示中文；用户正在试用。
+
+### 后续汉化与上游同步
+
+1. 在 `zh-cn` 上维护。首次同步上游前，先把当前汉化保存为独立提交，区分并
+   保留用户后续改动；不用丢弃工作区的方式恢复官方版本。
+2. 获取上游后合并用户指定的发布标签；未指定时优先正式发布版本。冲突处
+   保留新版功能逻辑并补译，不统一选择 `ours` 或 `theirs`。
+3. 界面文案通过 `t()` 和 `src/i18n/locales/zh-CN.json` 维护。新增键时保持
+   各语言包结构一致；本次新增文案在其他未补译语言中保留英文。
+   模块级菜单和权限选项在读取或渲染时翻译，避免缓存启动时的语言。
+4. 保留命令 ID、配置键、协议值、权限决定和原生推理值；中文显示不能改变
+   实际发送给提供商的值。同步后继续验证中文控件的操作结果和已有配置兼容性。
+5. 按下方完整验证要求检查后再构建部署，并更新本节的版本、验证和安装记录。
+   `main.js`、`styles.css` 是被 Git 忽略的产物，汉化维护以源码和测试为准。
+
+### Personal OS 试用安装
+
+- 知识库：`/home/nldff/文档/obsidian/Personal OS`。
+- 实际插件 ID 为 `realclaudian`，安装目录是该知识库的
+  `.obsidian/plugins/realclaudian/`，与源码仓库目录名 `claudian` 不同。
+- 已复制并校验 `main.js`、`manifest.json`、`styles.css`，保留现有
+  `data.json`、`.claudian/claudian-settings.json`、会话和笔记。
+- 本次覆盖前的备份位于源码仓库
+  `.context/plugin-backups/20261007-221445/`；安装包和界面截图也在 `.context/`。
+  后续覆盖前仍须备份原来的三个发布文件，不替换整个插件目录。
+- 当前 `.env.local` 未设置 `OBSIDIAN_VAULT`。构建脚本自动复制目标使用
+  `claudian` 目录；启用自动复制前必须核对其与实际插件 ID 的一致性。
+- 部署后校验文件，并用 Obsidian CLI 重载 `realclaudian`、打开聊天面板检查。
+  在 Obsidian 中更新官方插件会覆盖本地汉化构建。
+
 ## Loading and verification
 
 - For test changes or changes to the code they cover, follow `tests/AGENTS.md`, even when no test edit is planned.

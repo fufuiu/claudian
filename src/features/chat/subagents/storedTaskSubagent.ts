@@ -1,5 +1,6 @@
 import { extractToolResultContent } from '@/core/tools/toolResultContent';
 import type { SubagentInfo, ToolCallInfo } from '@/core/types';
+import { t } from '@/i18n/i18n';
 
 /**
  * Builds the subagent shown for a stored managed-agent spawn tool, preferring
@@ -16,7 +17,7 @@ export function resolveStoredTaskSubagent(toolCall: ToolCallInfo, modeHint?: 'sy
     };
   }
 
-  const description = (toolCall.input?.description as string) || 'Subagent task';
+  const description = (toolCall.input?.description as string) || t('chat.subagents.task');
   const prompt = (toolCall.input?.prompt as string) || '';
   const mode = modeHint ?? (toolCall.input?.run_in_background === true ? 'async' : 'sync');
 

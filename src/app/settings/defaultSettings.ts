@@ -37,7 +37,7 @@ export const DEFAULT_CLAUDIAN_SETTINGS: ClaudianSettings = {
   },
   requireCommandOrControlEnterToSend: false,
 
-  locale: 'en',
+  locale: 'zh-CN',
 
   providerConfigs: {},
 

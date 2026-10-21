@@ -220,7 +220,7 @@ function buildForkTitle(
 ): string {
   const MAX_TITLE_LENGTH = 50;
   const forkSuffix = forkAtUserMessage ? ` (#${forkAtUserMessage})` : '';
-  const forkPrefix = 'Fork: ';
+  const forkPrefix = t('chat.fork.titlePrefix');
   const maxSourceLength = MAX_TITLE_LENGTH - forkPrefix.length - forkSuffix.length;
   const truncatedSource = sourceTitle.length > maxSourceLength
     ? sourceTitle.slice(0, maxSourceLength - 1) + '…'

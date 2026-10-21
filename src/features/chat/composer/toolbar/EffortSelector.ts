@@ -3,6 +3,7 @@ import type { ProviderUIOption } from '@/core/providers/types';
 import type { ModelMenuPart, ModelSelector } from '@/features/chat/composer/toolbar/ModelSelector';
 import { nextToolbarId, runToolbarAction } from '@/features/chat/composer/toolbar/ToolbarMenu';
 import type { ToolbarCallbacks } from '@/features/chat/composer/toolbar/types';
+import { t } from '@/i18n/i18n';
 
 /** Levels the provider reports for the current model, in its order. */
 interface ReasoningScale {
@@ -59,7 +60,8 @@ export class EffortSelector {
     const settings = this.callbacks.getSettings();
     const model = settings.model;
     const uiConfig = this.callbacks.getUIConfig();
-    const options: ProviderUIOption[] = uiConfig.getReasoningOptions(model, settings);
+    const options: ProviderUIOption[] = uiConfig.getReasoningOptions(model, settings)
+      .map(option => ({ ...option, label: formatReasoningValueLabel(option.label) }));
     const defaultValue = uiConfig.getDefaultReasoningValue(model, settings);
     const shouldHide = options.length === 0
       || (options.length === 1 && options[0]?.value === defaultValue);
@@ -71,11 +73,11 @@ export class EffortSelector {
     const current = settings.reasoning;
     const currentIndex = options.findIndex(option => option.value === current);
     const currentLabel = options[currentIndex]?.label
-      ?? (current ? formatReasoningValueLabel(current) : 'Default');
+      ?? (current ? formatReasoningValueLabel(current) : t('chat.toolbar.default'));
 
     this.part.chipEl.removeClass('claudian-hidden');
     this.part.chipEl.setText(currentLabel);
-    this.part.describe(`effort ${currentLabel}`);
+    this.part.describe(t('chat.toolbar.effortLabel', { label: currentLabel }));
     this.part.sectionEl.removeClass('claudian-hidden');
 
     // Rebuild only when the levels change, so a refresh never replaces the slider under the user.
@@ -101,7 +103,7 @@ export class EffortSelector {
   #buildSlider(scale: ReasoningScale): ReasoningSlider {
     const sectionEl = this.part.sectionEl;
     sectionEl.empty();
-    const name = 'Effort';
+    const name = t('chat.toolbar.effort');
     const nameId = nextToolbarId('slider-name');
     const groupEl = sectionEl.createDiv({
       cls: 'claudian-toolbar-slider-group claudian-thinking-effort',
@@ -112,8 +114,8 @@ export class EffortSelector {
     const valueEl = headerEl.createSpan({ cls: 'claudian-toolbar-slider-value' });
 
     const endsEl = groupEl.createDiv({ cls: 'claudian-toolbar-slider-ends', attr: { 'aria-hidden': 'true' } });
-    endsEl.createSpan({ text: 'Faster' });
-    endsEl.createSpan({ text: 'Smarter' });
+    endsEl.createSpan({ text: t('chat.toolbar.faster') });
+    endsEl.createSpan({ text: t('chat.toolbar.smarter') });
 
     // The fill and stops are drawn under a transparent native range input that takes all pointer input.
     const controlEl = groupEl.createDiv({ cls: 'claudian-toolbar-slider' });
@@ -191,6 +193,6 @@ export class EffortSelector {
         // Once every commit has landed, show what was saved, including a rollback after a failure.
         if (this.#pendingCommits === 0) this.updateDisplay();
       }
-    }, 'Failed to change effort level');
+    }, t('chat.errors.effortChange'));
   }
 }

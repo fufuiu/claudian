@@ -1,4 +1,5 @@
 import type { AskUserAnswers, AskUserQuestionItem, AskUserQuestionOption } from '@/core/types/tools';
+import { t } from '@/i18n/i18n';
 
 const CHECK_GLYPH = '\u2713';
 
@@ -51,7 +52,7 @@ export class InlineAskUserQuestion {
     this.signal = signal;
     this.config = {
       onSubmit: config?.onSubmit,
-      title: config?.title ?? 'Question',
+      title: config?.title ?? t('chat.questions.question'),
       headerEl: config?.headerEl,
       showCustomInput: config?.showCustomInput ?? true,
       immediateSelect: config?.immediateSelect ?? false,
@@ -176,7 +177,7 @@ export class InlineAskUserQuestion {
     if (typeof obj.value === 'string') return obj.value;
     if (typeof obj.text === 'string') return obj.text;
     if (typeof obj.name === 'string') return obj.name;
-    return 'Option';
+    return t('chat.questions.option');
   }
 
   #stringifyOptionValue(value: unknown): string {
@@ -184,7 +185,7 @@ export class InlineAskUserQuestion {
     if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
       return `${value}`;
     }
-    return 'Option';
+    return t('chat.questions.option');
   }
 
   #extractValue(obj: Record<string, unknown>, fallback: string): string {
@@ -212,9 +213,9 @@ export class InlineAskUserQuestion {
     }
 
     const allAnswered = this.questions.every((_, i) => this.#isQuestionAnswered(i));
-    const submitTab = this.tabBar.createEl('button', { cls: 'claudian-ask-tab claudian-ask-tab--submit', attr: { type: 'button', 'aria-label': 'Submit' } });
+    const submitTab = this.tabBar.createEl('button', { cls: 'claudian-ask-tab claudian-ask-tab--submit', attr: { type: 'button', 'aria-label': t('common.submit') } });
     submitTab.disabled = this.submitting;
-    submitTab.createSpan({ text: 'Submit', cls: 'claudian-ask-tab-label' });
+    submitTab.createSpan({ text: t('common.submit'), cls: 'claudian-ask-tab-label' });
     if (allAnswered) submitTab.addClass('is-ready');
     if (this.activeTabIndex === this.questions.length) submitTab.addClass('is-active');
     submitTab.addEventListener('click', () => this.#switchTab(this.questions.length));
@@ -315,7 +316,7 @@ export class InlineAskUserQuestion {
       });
       inputEl.setAttribute('type', q.isSecret ? 'password' : 'text');
       inputEl.setAttribute('aria-label', q.question);
-      inputEl.setAttribute('placeholder', q.isSecret ? 'Enter secret\u2026' : 'Type your own answer\u2026');
+      inputEl.setAttribute('placeholder', q.isSecret ? t('chat.questions.enterSecret') : t('chat.questions.customAnswer'));
 
       inputEl.addEventListener('input', () => {
         this.customInputs.set(idx, inputEl.value);
@@ -347,7 +348,7 @@ export class InlineAskUserQuestion {
 
   #renderSubmitTab(): void {
     this.contentArea.createDiv({
-      text: 'Review your answers',
+      text: t('chat.questions.review'),
       cls: 'claudian-ask-review-title',
     });
 
@@ -357,30 +358,30 @@ export class InlineAskUserQuestion {
       const q = this.questions[idx];
       const answerText = this.#getAnswerText(idx);
 
-      const pairEl = reviewEl.createEl('button', { cls: 'claudian-ask-review-pair', attr: { type: 'button', 'aria-label': `Edit answer to ${q.question}` } });
+      const pairEl = reviewEl.createEl('button', { cls: 'claudian-ask-review-pair', attr: { type: 'button', 'aria-label': t('chat.questions.editAnswer', { question: q.question }) } });
       pairEl.disabled = this.submitting;
       const bodyEl = pairEl.createSpan({ cls: 'claudian-ask-review-body' });
       bodyEl.createSpan({ text: q.question, cls: 'claudian-ask-review-q-text' });
       bodyEl.createSpan({
-        text: answerText || 'Not answered',
+        text: answerText || t('chat.questions.notAnswered'),
         cls: answerText ? 'claudian-ask-review-a-text' : 'claudian-ask-review-empty',
       });
       pairEl.addEventListener('click', () => this.#switchTab(idx));
     }
 
     this.contentArea.createDiv({
-      text: 'Ready to submit your answers?',
+      text: t('chat.questions.readySubmit'),
       cls: 'claudian-ask-review-prompt',
     });
 
     const actionsEl = this.contentArea.createDiv({ cls: 'claudian-ask-actions' });
     const allAnswered = this.questions.every((_, i) => this.#isQuestionAnswered(i));
 
-    const submitRow = actionsEl.createEl('button', { cls: 'claudian-ask-item claudian-ask-action claudian-ask-action--primary', attr: { type: 'button', 'aria-label': this.submitting ? 'Sending...' : 'Submit answers' } });
+    const submitRow = actionsEl.createEl('button', { cls: 'claudian-ask-item claudian-ask-action claudian-ask-action--primary', attr: { type: 'button', 'aria-label': this.submitting ? t('chat.questions.sending') : t('chat.questions.submitAnswers') } });
     submitRow.disabled = this.submitting || !allAnswered;
     if (this.focusedItemIndex === 0) submitRow.addClass('is-focused');
     if (!allAnswered) submitRow.addClass('is-disabled');
-    submitRow.createSpan({ text: this.submitting ? 'Sending...' : 'Submit answers', cls: 'claudian-ask-item-label' });
+    submitRow.createSpan({ text: this.submitting ? t('chat.questions.sending') : t('chat.questions.submitAnswers'), cls: 'claudian-ask-item-label' });
     submitRow.addEventListener('click', () => {
       this.focusedItemIndex = 0;
       this.#updateFocusIndicator();
@@ -388,10 +389,10 @@ export class InlineAskUserQuestion {
     });
     this.currentItems.push(submitRow);
 
-    const cancelRow = actionsEl.createEl('button', { cls: 'claudian-ask-item claudian-ask-action', attr: { type: 'button', 'aria-label': 'Cancel' } });
+    const cancelRow = actionsEl.createEl('button', { cls: 'claudian-ask-item claudian-ask-action', attr: { type: 'button', 'aria-label': t('settings.envSnippets.modal.cancel') } });
     cancelRow.disabled = this.submitting;
     if (this.focusedItemIndex === 1) cancelRow.addClass('is-focused');
-    cancelRow.createSpan({ text: 'Cancel', cls: 'claudian-ask-item-label' });
+    cancelRow.createSpan({ text: t('settings.envSnippets.modal.cancel'), cls: 'claudian-ask-item-label' });
     cancelRow.addEventListener('click', () => {
       if (this.submitting) return;
       this.focusedItemIndex = 1;
@@ -699,7 +700,7 @@ export class InlineAskUserQuestion {
       this.#handleResolve(result);
     } catch (error) {
       if (this.resolved) return;
-      this.submissionError = error instanceof Error ? error.message : 'Could not send the answer. Please try again.';
+      this.submissionError = error instanceof Error ? error.message : t('chat.questions.sendFailed');
       this.submitting = false;
       this.rootEl.setAttribute('aria-busy', 'false');
       this.#renderTabBar();

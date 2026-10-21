@@ -2,6 +2,7 @@ import type { ProviderSessionReference } from '@/core/execution/ProviderExecutio
 import type { ChatFeatureHost } from '@/features/chat/ChatFeatureHost';
 import { findComposerSessionMentions } from '@/features/chat/composer/composerSessionMentions';
 import { formatSessionSnapshot } from '@/features/chat/input/formatSessionSnapshot';
+import { t } from '@/i18n/i18n';
 
 export async function resolveSessionMentions(
   host: ChatFeatureHost,
@@ -16,7 +17,7 @@ export async function resolveSessionMentions(
       signal.throwIfAborted();
       const conversation = await host.getConversationById(mention.conversationId);
       signal.throwIfAborted();
-      if (!conversation || !conversation.messages.length) throw new Error('History is unavailable');
+      if (!conversation || !conversation.messages.length) throw new Error(t('chat.errors.historyUnavailable'));
       const owner = host.findConversationAcrossViews(conversation.id);
       const tab = owner?.view.getTabManager()?.getTab(owner.tabId);
       const live = tab?.hydrationState === 'ready' && tab.conversationId === conversation.id ? tab.state : null;
@@ -29,7 +30,7 @@ export async function resolveSessionMentions(
       });
     } catch (error) {
       if (signal.aborted) throw error;
-      throw new Error(`Could not mention session "${mention.title}": ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+      throw new Error(t('chat.errors.mentionSession', { title: mention.title, error: error instanceof Error ? error.message : String(error) }), { cause: error });
     }
   }
   let rewritten = text;

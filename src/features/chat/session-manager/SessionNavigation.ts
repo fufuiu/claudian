@@ -2,6 +2,7 @@ import type { ChatFeatureHost, ChatViewHost } from '@/features/chat/ChatFeatureH
 import type { HistoryConversationStatus } from '@/features/chat/session-manager/SessionStatusPresentation';
 import type { TabProviderCatalogContext } from '@/features/chat/tabs/ChatTab';
 import type { TabManager } from '@/features/chat/tabs/TabManager';
+import { t } from '@/i18n/i18n';
 
 export interface SessionNavigationDeps {
   plugin: ChatFeatureHost;
@@ -105,12 +106,12 @@ export class SessionNavigation {
   async startLinkedContentConversation(contentPath: string): Promise<void> {
     const tabManager = this.deps.getTabManager();
     if (!tabManager) {
-      throw new Error('Chat tabs are unavailable');
+      throw new Error(t('chat.errors.tabsUnavailable'));
     }
 
     await tabManager.waitForTabSwitchIdle();
     if (!this.contentExists(contentPath)) {
-      throw new Error('Linked content is no longer available');
+      throw new Error(t('chat.linkedContent.unavailable'));
     }
     const initialTabId = tabManager.getActiveTabId();
     const initialSwitchRevision = tabManager.getTabSwitchRequestRevision();
@@ -122,12 +123,12 @@ export class SessionNavigation {
       lifecycleState: 'provisional',
     });
     if (!tab) {
-      throw new Error('Failed to create a provisional chat tab');
+      throw new Error(t('chat.errors.provisionalTab'));
     }
 
     try {
       if (!this.contentExists(contentPath)) {
-        throw new Error('Linked content is no longer available');
+        throw new Error(t('chat.linkedContent.unavailable'));
       }
       tab.linkedContent.selectExplicit(contentPath);
       this.deps.onTabsChanged();

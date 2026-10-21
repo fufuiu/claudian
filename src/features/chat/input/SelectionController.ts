@@ -4,6 +4,7 @@ import { MarkdownView } from 'obsidian';
 import type { EditorSelectionContext } from '@/core/prompt/editorContext';
 import type { ComposerContextTray } from '@/features/chat/composer/ComposerContextTray';
 import type { StoredSelection } from '@/features/chat/state/types';
+import { t } from '@/i18n/i18n';
 import { hideSelectionHighlight, showSelectionHighlight } from '@/shared/components/SelectionHighlight';
 import { getEditorView } from '@/utils/obsidianCompat';
 
@@ -389,8 +390,7 @@ export class SelectionController {
 
   private updateIndicator(): void {
     if (this.storedSelection) {
-      const lineText = this.storedSelection.lineCount === 1 ? 'line' : 'lines';
-      const label = `${this.storedSelection.lineCount} ${lineText} selected`;
+      const label = t('chat.composer.linesSelected', { count: this.storedSelection.lineCount, unit: this.storedSelection.lineCount === 1 ? 'line' : 'lines' });
       this.contextTray.setItems('editor-selection', [{
         id: 'editor-selection',
         kind: 'selection',

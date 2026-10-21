@@ -1,4 +1,5 @@
 import type { KeyboardNavigationSettings } from '@/core/types/settings';
+import { t } from '@/i18n/i18n';
 
 const NAV_ACTIONS = ['scrollUp', 'scrollDown', 'focusInput'] as const;
 type NavAction = (typeof NAV_ACTIONS)[number];
@@ -24,27 +25,27 @@ export const parseNavMappings = (
 
     const parts = line.split(/\s+/);
     if (parts.length !== 3 || parts[0] !== 'map') {
-      return { error: 'Each line must follow "map <key> <action>"' };
+      return { error: t('settings.navMappings.errors.format') };
     }
 
     const key = parts[1];
     const action = parts[2] as NavAction;
 
     if (!NAV_ACTIONS.includes(action)) {
-      return { error: `Unknown action: ${parts[2]}` };
+      return { error: t('settings.navMappings.errors.unknown', { action: parts[2] }) };
     }
 
     if (key.length !== 1) {
-      return { error: `Key must be a single character for ${action}` };
+      return { error: t('settings.navMappings.errors.singleKey', { action }) };
     }
 
     const normalizedKey = key.toLowerCase();
     if (usedKeys.has(normalizedKey)) {
-      return { error: 'Navigation keys must be unique' };
+      return { error: t('settings.navMappings.errors.unique') };
     }
 
     if (parsed[action]) {
-      return { error: `Duplicate mapping for ${action}` };
+      return { error: t('settings.navMappings.errors.duplicate', { action }) };
     }
 
     usedKeys.set(normalizedKey, action);
@@ -53,7 +54,7 @@ export const parseNavMappings = (
 
   const missing = NAV_ACTIONS.filter((action) => !parsed[action]);
   if (missing.length > 0) {
-    return { error: `Missing mapping for ${missing.join(', ')}` };
+    return { error: t('settings.navMappings.errors.missing', { actions: missing.join(', ') }) };
   }
 
   return { settings: parsed as Record<NavAction, string> };

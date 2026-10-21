@@ -17,6 +17,7 @@ import {
   updateSubagentBlock,
   updateSubagentProgress,
 } from '@/features/chat/subagents/SubagentRenderer';
+import { t } from '@/i18n/i18n';
 
 export type SubagentStateChangeCallback = (subagent: SubagentInfo) => void;
 
@@ -339,7 +340,7 @@ export class SubagentManager {
 
     if (isError) {
       if (!record.terminalSource) {
-        this.#transitionToError(record, resultText || 'Task failed to start');
+        this.#transitionToError(record, resultText || t('chat.subagents.startFailed'));
       }
       return;
     }
@@ -452,7 +453,7 @@ export class SubagentManager {
     if (record.nativeCompletion) return undefined;
 
     const result = completion.result?.trim()
-      || (completion.status === 'error' ? 'Background task failed.' : 'Background task completed.');
+      || (completion.status === 'error' ? t('chat.subagents.failed') : t('chat.subagents.completed'));
     record.nativeCompletion = {
       taskId: completion.taskId,
       status: completion.status,
@@ -598,7 +599,7 @@ export class SubagentManager {
   #markOrphaned(record: AsyncSubagentRecord): void {
     record.info.asyncStatus = 'orphaned';
     record.info.status = 'error';
-    record.info.result = 'Conversation ended before task completed';
+    record.info.result = t('chat.subagents.ended');
     record.info.completedAt = Date.now();
     record.terminalSource = 'local_error';
     this.#publishAsyncState(record.info);
@@ -687,7 +688,7 @@ export class SubagentManager {
   ): HandleTaskResult {
     const task = this.taskResultInterpreter.describeTask(taskInput);
     const info: SubagentInfo = {
-      id: taskToolId, description: task.description || 'Subagent task', prompt: task.prompt || '',
+      id: taskToolId, description: task.description || t('chat.subagents.task'), prompt: task.prompt || '',
       mode: 'sync', status: 'running', toolCalls: [], isExpanded: false,
     };
     const subagentState = createSubagentBlock(parentEl, info);
@@ -701,7 +702,7 @@ export class SubagentManager {
     parentEl: HTMLElement
   ): HandleTaskResult {
     const task = this.taskResultInterpreter.describeTask(taskInput);
-    const description = task.description || 'Background task';
+    const description = task.description || t('chat.subagents.backgroundTask');
     const prompt = task.prompt || '';
 
     const info: SubagentInfo = {

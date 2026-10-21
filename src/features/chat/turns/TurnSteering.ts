@@ -9,6 +9,7 @@ import type {
 import type { ChatState } from '@/features/chat/state/ChatState';
 import type { ChatTurnRequest, QueuedMessage } from '@/features/chat/state/types';
 import type { TurnCoordinator } from '@/features/chat/turns/TurnCoordinator';
+import { t } from '@/i18n/i18n';
 
 /** The user message a provider is expected to echo for submitted input. */
 export interface PendingProviderUserMessage {
@@ -135,7 +136,7 @@ export class TurnSteering {
       }
       if (outcome.delivery === 'not-sent') {
         pending.providerDisposition = 'definitely-unsent';
-        if (outcome.error) reportFailure('Failed to steer the queued message. It is still available.');
+        if (outcome.error) reportFailure(t('chat.errors.steerFailed'));
         return pending;
       }
       this.#markUncertain(pending, reportFailure);
@@ -153,7 +154,7 @@ export class TurnSteering {
       this.release(pending);
     }
     reportFailure(
-      'Steer delivery could not be confirmed. The message was not requeued to avoid sending it twice.',
+      t('chat.errors.steerUncertain'),
     );
   }
 

@@ -11,6 +11,7 @@ import {
 } from '@/features/agent-skills/AgentSkillRepository';
 import { parseFrontmatter } from '@/features/agent-skills/frontmatter';
 import { AgentSkillValidationError, validateAgentSkillName } from '@/features/agent-skills/validateAgentSkill';
+import { t } from '@/i18n/i18n';
 
 const COMMAND_EXTENSION = '.md';
 
@@ -119,7 +120,7 @@ export class ClaudeCommandRepository {
   ): Promise<ClaudeCommandDocument> {
     if (input.name !== previousName) this.#assertValidName(input.name);
     if (!input.instructions.trim()) {
-      throw new AgentSkillValidationError('instructions', 'Command instructions are required');
+      throw new AgentSkillValidationError('instructions', t('settings.skills.commands.instructionsRequired'));
     }
     return this.#withMutation(async () => {
       const current = await this.#readDocument(this.#filePath(previousName));
@@ -176,15 +177,15 @@ export class ClaudeCommandRepository {
 
   #assertValidName(name: string): void {
     for (const segment of name.split('/')) {
-      const error = validateAgentSkillName(segment);
-      if (error) throw new AgentSkillValidationError('name', error.replace('Skill name', 'Command name'));
+      const error = validateAgentSkillName(segment, t('settings.skills.commands.name'));
+      if (error) throw new AgentSkillValidationError('name', error);
     }
   }
 
   #filePath(name: string): string {
     const segments = name.split('/');
     if (segments.some(segment => !segment || segment === '.' || segment === '..' || segment.includes('\\'))) {
-      throw new AgentSkillValidationError('name', 'Command name must be a relative path');
+      throw new AgentSkillValidationError('name', t('settings.skills.commands.relativeName'));
     }
     return `${CLAUDE_COMMANDS_ROOT}/${name}${COMMAND_EXTENSION}`;
   }

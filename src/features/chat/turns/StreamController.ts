@@ -27,6 +27,7 @@ import {
   scheduleAnimationFrame,
   type ScheduledAnimationFrame,
 } from '@/features/chat/utils/animationFrame';
+import { t } from '@/i18n/i18n';
 import { hasStreamingMathDelimiters } from '@/utils/markdownMath';
 
 export interface StreamControllerDeps {
@@ -212,7 +213,7 @@ export class StreamController {
 
       case 'notice':
         this.#tools.flush();
-        await this.appendText(`\n\n⚠️ **${chunk.level === 'warning' ? 'Blocked' : 'Notice'}:** ${chunk.content}`);
+        await this.appendText(`\n\n⚠️ **${chunk.level === 'warning' ? t('chat.tools.blocked') : t('chat.tools.notice')}:** ${chunk.content}`);
         break;
 
       case 'error':
@@ -415,7 +416,7 @@ export class StreamController {
     // Compaction is over; later waiting in this response shows ordinary flavor.
     this.thinkingIndicator.endExplicit();
     const el = state.currentContentEl.createDiv({ cls: 'claudian-compact-boundary' });
-    el.createSpan({ cls: 'claudian-compact-boundary-label', text: 'Conversation compacted' });
+    el.createSpan({ cls: 'claudian-compact-boundary-label', text: t('chat.status.compacted') });
   }
 
   // ============================================

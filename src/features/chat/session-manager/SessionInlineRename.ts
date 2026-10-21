@@ -1,5 +1,7 @@
 import { Notice } from 'obsidian';
 
+import { t } from '@/i18n/i18n';
+
 export interface InlineRenameRequest {
   currentTitle: string;
   /** Persists a changed, non-empty title. */
@@ -54,7 +56,7 @@ export class SessionInlineRename {
         this.#active = null;
       }
       void finish().catch(() => {
-        new Notice('Failed to rename conversation');
+        new Notice(t('chat.errors.renameConversation'));
       });
     });
     input.addEventListener('keydown', (e) => {

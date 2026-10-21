@@ -1,5 +1,7 @@
 import { Setting } from 'obsidian';
 
+import { t } from '@/i18n/i18n';
+
 import { getEnvironmentReviewKeysForScope } from '../../core/providers/providerEnvironment';
 import type { ProviderHost } from '../../core/providers/ProviderHost';
 import type { EnvironmentScope } from '../../core/types/settings';
@@ -52,7 +54,7 @@ export function renderEnvironmentSettingsSection(
       return;
     }
 
-    reviewEl.setText(`Review environment ownership for: ${reviewKeys.join(', ')}`);
+    reviewEl.setText(t('settings.environmentReview', { keys: reviewKeys.join(', ') }));
     reviewEl.toggleClass('claudian-hidden', false);
   };
 

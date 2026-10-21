@@ -3,12 +3,7 @@ import { Notice } from 'obsidian';
 import type { ApprovalDecision } from '@/core/types';
 import { type InlineAskQuestionConfig, InlineAskUserQuestion } from '@/features/chat/interactions/InlineAskUserQuestion';
 import { setToolIcon } from '@/features/chat/rendering/tools/toolContentPrimitives';
-
-const APPROVAL_OPTION_MAP: Record<string, ApprovalDecision> = {
-  'Deny': 'deny',
-  'Allow once': 'allow',
-  'Always allow': 'allow-always',
-};
+import { t } from '@/i18n/i18n';
 
 export interface InlineApprovalDecisionOption {
   label: string;
@@ -24,12 +19,13 @@ export interface InlineApprovalOptions {
   decisionOptions?: InlineApprovalDecisionOption[];
 }
 
-const DEFAULT_APPROVAL_DECISION_OPTIONS: InlineApprovalDecisionOption[] =
-  Object.entries(APPROVAL_OPTION_MAP).map(([label, decision]) => ({
-    decision,
-    label,
-    value: label,
-  }));
+function getDefaultApprovalDecisionOptions(): InlineApprovalDecisionOption[] {
+  return [
+    { decision: 'deny', label: t('chat.questions.deny'), value: 'Deny' },
+    { decision: 'allow', label: t('chat.questions.allowOnce'), value: 'Allow once' },
+    { decision: 'allow-always', label: t('chat.questions.alwaysAllow'), value: 'Always allow' },
+  ];
+}
 
 export interface InlineInteractionPromptsDeps {
   /** Element that receives the inline prompt. */
@@ -78,14 +74,14 @@ export class InlineInteractionPrompts {
       headerEl.createDiv({ cls: 'claudian-ask-approval-blocked-path', text: approvalOptions.blockedPath });
     }
     if (approvalOptions?.agentID) {
-      headerEl.createDiv({ cls: 'claudian-ask-approval-agent', text: `Agent: ${approvalOptions.agentID}` });
+      headerEl.createDiv({ cls: 'claudian-ask-approval-agent', text: t('chat.tools.agent', { agent: approvalOptions.agentID }) });
     }
 
     const descriptionEl = headerEl.createDiv({
       cls: 'claudian-ask-approval-desc',
       text: description,
     });
-    descriptionEl.setAttribute('aria-label', `${toolName} approval details`);
+    descriptionEl.setAttribute('aria-label', t('chat.questions.approvalDetails', { tool: toolName }));
     descriptionEl.setAttribute('role', 'region');
     descriptionEl.setAttribute('tabindex', '0');
     descriptionEl.addEventListener('keydown', (event) => {
@@ -98,7 +94,7 @@ export class InlineInteractionPrompts {
       }
     });
 
-    const decisionOptions = approvalOptions?.decisionOptions ?? DEFAULT_APPROVAL_DECISION_OPTIONS;
+    const decisionOptions = approvalOptions?.decisionOptions ?? getDefaultApprovalDecisionOptions();
     const optionDecisionMap = new Map<string, ApprovalDecision>();
     const questionOptions = decisionOptions.map((option, index) => {
       const value = option.value || `approval-option-${index}`;
@@ -115,9 +111,9 @@ export class InlineInteractionPrompts {
     const result = await this.#showInline(
       interactionId,
       parentEl,
-      { questions: [{ isOther: false, isSecret: false, options: questionOptions, question: 'Allow this action?' }] },
+      { questions: [{ isOther: false, isSecret: false, options: questionOptions, question: t('chat.questions.allowAction') }] },
       signal,
-      { headerEl, immediateSelect: true, showCustomInput: false, title: 'Permission required' },
+      { headerEl, immediateSelect: true, showCustomInput: false, title: t('chat.questions.permissionRequired') },
     );
 
     if (!result) return 'cancel';

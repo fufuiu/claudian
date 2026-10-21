@@ -5,6 +5,8 @@ import type { ChatFeatureHost } from '@/features/chat/ChatFeatureHost';
 import type { SessionListSectionKind } from '@/features/chat/session-manager/SessionListOrganizer';
 import type { SessionMultiSelection } from '@/features/chat/session-manager/SessionMultiSelection';
 import type { HistoryConversationStatus } from '@/features/chat/session-manager/SessionStatusPresentation';
+import { t } from '@/i18n/i18n';
+import type { TranslationKey } from '@/i18n/types';
 import { confirmDelete } from '@/shared/modals/ConfirmModal';
 
 /** Runs a session action, reporting any failure once as a notice. */
@@ -70,17 +72,17 @@ export interface SessionRow extends SessionRowActionInput {
   beginRename: () => void;
 }
 
-const ROW_ACTION_TITLES: Readonly<Record<SessionRowActionKind, string>> = {
-  'open-in-new-tab': 'Open in new tab',
-  'open-in-background-tab': 'Open in background tab',
-  'switch-to-open': 'Switch to open session',
-  'assign-device': 'Assign to this device',
-  pin: 'Pin',
-  unpin: 'Unpin',
-  rename: 'Rename',
-  archive: 'Archive',
-  restore: 'Restore',
-  delete: 'Delete',
+const ROW_ACTION_TITLES: Readonly<Record<SessionRowActionKind, TranslationKey>> = {
+  'open-in-new-tab': 'chat.sessions.openNewTab',
+  'open-in-background-tab': 'chat.sessions.openBackgroundTab',
+  'switch-to-open': 'chat.sessions.switchOpen',
+  'assign-device': 'chat.sessions.assignDevice',
+  pin: 'chat.sessions.pin',
+  unpin: 'chat.sessions.unpin',
+  rename: 'chat.sessions.rename',
+  archive: 'chat.sessions.archive',
+  restore: 'chat.sessions.restore',
+  delete: 'common.delete',
 };
 
 const INLINE_BUTTONS: Readonly<Partial<Record<SessionRowActionKind, { cls: string; icon: string }>>> = {
@@ -94,16 +96,16 @@ const INLINE_BUTTONS: Readonly<Partial<Record<SessionRowActionKind, { cls: strin
   delete: { cls: 'claudian-delete-btn', icon: 'trash-2' },
 };
 
-const ROW_ACTION_FAILURES: Readonly<Record<Exclude<SessionRowActionKind, 'rename'>, string>> = {
-  'open-in-new-tab': 'Failed to load conversation',
-  'open-in-background-tab': 'Failed to load conversation',
-  'switch-to-open': 'Failed to load conversation',
-  'assign-device': 'Failed to assign session to this device',
-  pin: 'Failed to pin session',
-  unpin: 'Failed to unpin session',
-  archive: 'Failed to archive session',
-  restore: 'Failed to restore session',
-  delete: 'Failed to delete conversation',
+const ROW_ACTION_FAILURES: Readonly<Record<Exclude<SessionRowActionKind, 'rename'>, TranslationKey>> = {
+  'open-in-new-tab': 'chat.errors.loadConversation',
+  'open-in-background-tab': 'chat.errors.loadConversation',
+  'switch-to-open': 'chat.errors.loadConversation',
+  'assign-device': 'chat.errors.assignDevice',
+  pin: 'chat.errors.pinSession',
+  unpin: 'chat.errors.unpinSession',
+  archive: 'chat.errors.archiveSession',
+  restore: 'chat.errors.restoreSession',
+  delete: 'chat.errors.deleteConversation',
 };
 
 function action(kind: SessionRowActionKind, disabled = false): SessionRowAction {
@@ -180,7 +182,7 @@ export interface SessionActionsDeps {
 }
 
 function sessionCount(count: number): string {
-  return `${count} ${count === 1 ? 'session' : 'sessions'}`;
+  return t('chat.sessions.count', { count, unit: count === 1 ? 'session' : 'sessions' });
 }
 
 /** Offers and runs session actions for rows, multi-selections, and groups. */
@@ -203,8 +205,8 @@ export class SessionActions {
       button.setAttribute(
         'aria-label',
         rowAction.kind === 'archive' && rowAction.disabled
-          ? 'Cannot archive a running session'
-          : ROW_ACTION_TITLES[rowAction.kind],
+          ? t('chat.sessions.cannotArchiveRunning')
+          : t(ROW_ACTION_TITLES[rowAction.kind]),
       );
       if (rowAction.disabled) {
         button.setAttribute('disabled', '');
@@ -221,7 +223,7 @@ export class SessionActions {
     const menu = new Menu().setUseNativeMenu(false);
     for (const rowAction of resolveRowActions('menu', row, options)) {
       menu.addItem((menuItem) => {
-        menuItem.setTitle(ROW_ACTION_TITLES[rowAction.kind]);
+        menuItem.setTitle(t(ROW_ACTION_TITLES[rowAction.kind]));
         if (rowAction.disabled) {
           menuItem.setDisabled(true);
           return;
@@ -252,18 +254,18 @@ export class SessionActions {
     if (isArchivedView) {
       const ids = selected.map(conversation => conversation.id);
       menu.addItem(menuItem => menuItem
-        .setTitle(`Restore ${sessionCount(ids.length)}`)
+        .setTitle(t('chat.sessions.restoreCount', { count: sessionCount(ids.length) }))
         .onClick(() => {
           selection.clear();
-          runSessionAction(() => lifecycle.restore(ids), 'Failed to restore sessions');
+          runSessionAction(() => lifecycle.restore(ids), t('chat.errors.restoreSessions'));
         }));
       menu.addItem(menuItem => menuItem
-        .setTitle(`Delete ${sessionCount(ids.length)}`)
+        .setTitle(t('chat.sessions.deleteCount', { count: sessionCount(ids.length) }))
         .onClick(() => {
           selection.clear();
           runSessionAction(
             () => this.deleteSessions(ids, { confirm: true, rerender: options.onRerender }),
-            'Failed to delete sessions',
+            t('chat.errors.deleteSessions'),
           );
         }));
       return menu;
@@ -276,12 +278,12 @@ export class SessionActions {
       const isPinning = unpinnedIds.length > 0;
       const pinIds = isPinning ? unpinnedIds : selected.map(conversation => conversation.id);
       menu.addItem(menuItem => menuItem
-        .setTitle(`${isPinning ? 'Pin' : 'Unpin'} ${sessionCount(pinIds.length)}`)
+        .setTitle(`${isPinning ? t('chat.sessions.pin') : t('chat.sessions.unpin')} ${sessionCount(pinIds.length)}`)
         .onClick(() => {
           selection.clear();
           runSessionAction(
             () => lifecycle.setPinned(pinIds, isPinning),
-            isPinning ? 'Failed to pin sessions' : 'Failed to unpin sessions',
+            isPinning ? t('chat.errors.pinSessions') : t('chat.errors.unpinSessions'),
           );
         }));
     }
@@ -291,14 +293,14 @@ export class SessionActions {
       .map(conversation => conversation.id);
     menu.addItem((menuItem) => {
       menuItem
-        .setTitle(`Archive ${sessionCount(archivableIds.length)}`)
+        .setTitle(t('chat.sessions.archiveCount', { count: sessionCount(archivableIds.length) }))
         .setDisabled(archivableIds.length === 0);
       if (archivableIds.length > 0 && options.sessionActionMode === 'active') {
         menuItem.onClick(() => {
           selection.clear();
           runSessionAction(
             () => lifecycle.archive(archivableIds),
-            'Failed to archive sessions',
+            t('chat.errors.archiveSessions'),
           );
         });
       }
@@ -334,11 +336,11 @@ export class SessionActions {
       if (canTogglePin && linkedContent && onSetLinkedContentPinned) {
         const { path, isPinned } = linkedContent;
         menu.addItem(menuItem => menuItem
-          .setTitle(isPinned ? 'Unpin Linked content' : 'Pin Linked content')
+          .setTitle(isPinned ? t('chat.sessions.unpinContent') : t('chat.sessions.pinContent'))
           .onClick(() => {
             runSessionAction(
               () => onSetLinkedContentPinned(path, !isPinned),
-              isPinned ? 'Failed to unpin Linked content' : 'Failed to pin Linked content',
+              isPinned ? t('chat.errors.unpinContent') : t('chat.errors.pinContent'),
             );
           }));
       }
@@ -348,11 +350,11 @@ export class SessionActions {
           .filter(conversation => !isRunning(conversation))
           .map(conversation => conversation.id);
         const failureMessage = linkedContent
-          ? 'Failed to archive Linked content sessions'
-          : 'Failed to archive sessions';
+          ? t('chat.errors.archiveContent')
+          : t('chat.errors.archiveSessions');
         menu.addItem((menuItem) => {
           menuItem
-            .setTitle('Archive all sessions')
+            .setTitle(t('chat.sessions.archiveAll'))
             .setDisabled(archivableIds.length === 0);
           if (archivableIds.length > 0) {
             menuItem.onClick(() => {
@@ -386,7 +388,7 @@ export class SessionActions {
     const count = conversationIds.length;
     const confirmed = await confirmDelete(
       plugin.app,
-      `Permanently delete ${sessionCount(count)}?`,
+      t('chat.sessions.confirmDelete', { count: sessionCount(count) }),
     );
     if (!confirmed) return;
 
@@ -405,18 +407,18 @@ export class SessionActions {
     const ids = conversations.map(conversation => conversation.id);
     const lifecycle = this.deps.plugin.conversationLifecycle;
     menu.addItem(menuItem => menuItem
-      .setTitle('Restore all sessions')
+      .setTitle(t('chat.sessions.restoreAll'))
       .setDisabled(ids.length === 0)
       .onClick(() => {
-        runSessionAction(() => lifecycle.restore(ids), 'Failed to restore sessions');
+        runSessionAction(() => lifecycle.restore(ids), t('chat.errors.restoreSessions'));
       }));
     menu.addItem(menuItem => menuItem
-      .setTitle('Delete all sessions')
+      .setTitle(t('chat.sessions.deleteAll'))
       .setDisabled(ids.length === 0)
       .onClick(() => {
         runSessionAction(
           () => this.deleteSessions(ids, { confirm: true, rerender: options.onRerender }),
-          'Failed to delete sessions',
+          t('chat.errors.deleteSessions'),
         );
       }));
   }
@@ -427,7 +429,7 @@ export class SessionActions {
       row.beginRename();
       return;
     }
-    const failureMessage = ROW_ACTION_FAILURES[kind];
+    const failureMessage = t(ROW_ACTION_FAILURES[kind]);
     runSessionAction((): Promise<void> | undefined => {
       switch (kind) {
         case 'open-in-new-tab':

@@ -8,6 +8,7 @@ import { getAutomaticNotificationPredecessor, isStandaloneTaskNotification } fro
 import { ChatState } from '@/features/chat/state/ChatState';
 import { continueResponseAfterNotification } from '@/features/chat/turns/ResponseContinuation';
 import type { StreamController } from '@/features/chat/turns/StreamController';
+import { t } from '@/i18n/i18n';
 
 export interface BackgroundTurnRenderHost {
   readonly state: ChatState;
@@ -180,7 +181,7 @@ export async function renderAutoTriggeredTurn(
       && hasVisibleContent
       && !hasVisibleAutoTurnMessageContent(assistantMessage)
     ) {
-      const placeholder = '(background task completed)';
+      const placeholder = t('chat.status.backgroundCompleted');
       assistantMessage.content = placeholder;
       await stream.appendText(placeholder);
     }

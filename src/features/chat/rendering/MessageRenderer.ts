@@ -18,6 +18,7 @@ import { resolveStoredTaskSubagent } from '@/features/chat/subagents/storedTaskS
 import { resolveSubagentAdapter } from '@/features/chat/subagents/subagentAdapterResolution';
 import { renderSubagentHistory } from '@/features/chat/subagents/SubagentHistoryRenderer';
 import { renderStoredAsyncSubagent, renderStoredSubagent } from '@/features/chat/subagents/SubagentRenderer';
+import { t } from '@/i18n/i18n';
 import { ImagePreviewModal } from '@/shared/modals/ImagePreviewModal';
 import { registerFileLinkHandler } from '@/utils/fileLink';
 
@@ -316,11 +317,11 @@ export class MessageRenderer {
 
   appendInterruptIndicator(contentEl: HTMLElement): void {
     const textEl = createResponseTextBlock(contentEl);
-    textEl.createSpan({ cls: 'claudian-interrupted', text: 'Interrupted' });
+    textEl.createSpan({ cls: 'claudian-interrupted', text: t('chat.status.interrupted') });
     textEl.appendText(' ');
     textEl.createSpan({
       cls: 'claudian-interrupted-hint',
-      text: '\u00B7 What should Claudian do instead?',
+      text: t('chat.status.instead'),
     });
   }
 
@@ -362,7 +363,7 @@ export class MessageRenderer {
           this.#finalizer.renderTaskNotification(contentEl, block.content);
         } else if (block.type === 'context_compacted') {
           const boundaryEl = contentEl.createDiv({ cls: 'claudian-compact-boundary' });
-          boundaryEl.createSpan({ cls: 'claudian-compact-boundary-label', text: 'Conversation compacted' });
+          boundaryEl.createSpan({ cls: 'claudian-compact-boundary-label', text: t('chat.status.compacted') });
         } else if (block.type === 'subagent') {
           const taskToolCall = msg.toolCalls?.find((toolCall) => {
             if (toolCall.id !== block.subagentId) return false;
@@ -513,7 +514,7 @@ export class MessageRenderer {
       const imageWrapper = imagesEl.createEl('button', {
         cls: 'claudian-message-image',
         attr: {
-          'aria-label': `Preview ${image.name}`,
+          'aria-label': t('chat.composer.previewImage', { name: image.name }),
           type: 'button',
         },
       });

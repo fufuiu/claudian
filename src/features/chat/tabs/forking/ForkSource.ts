@@ -138,7 +138,7 @@ export async function handleForkRequest(
   const sourceConversationId = tab.conversationId;
 
   if (!getTabCapabilities(tab, plugin).supportsFork) {
-    new Notice('Fork is not supported by this provider.');
+    new Notice(t('chat.errors.forkUnsupported'));
     return;
   }
 
@@ -159,7 +159,7 @@ export async function handleForkRequest(
   }
 
   if (getTabCapabilities(tab, plugin).forkMode === 'full-session' && assistantIdx !== msgs.length - 1) {
-    new Notice('This provider can fork only from the latest reply.');
+    new Notice(t('chat.errors.forkLatest'));
     return;
   }
 
@@ -217,7 +217,7 @@ function resolveForkAllUnavailableNotice(
 ): string | null {
   switch (reason) {
     case 'unsupported-provider':
-      return 'Fork is not supported by this provider.';
+      return t('chat.errors.forkUnsupported');
     case 'streaming':
       return t('chat.fork.unavailableStreaming');
     case 'rewinding':
@@ -225,7 +225,7 @@ function resolveForkAllUnavailableNotice(
     case 'no-messages':
       return t('chat.fork.commandNoMessages');
     case 'not-latest-reply':
-      return 'This provider can fork only from the latest reply.';
+      return t('chat.errors.forkLatest');
     case 'no-checkpoint':
       return t('chat.fork.commandNoAssistantUuid');
     case 'no-session':

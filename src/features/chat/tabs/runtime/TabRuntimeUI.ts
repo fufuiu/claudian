@@ -42,6 +42,7 @@ import type {
   TabServices,
   TabUIComponents,
 } from '@/features/chat/tabs/types';
+import { t } from '@/i18n/i18n';
 
 function buildContextManagers(
   options: TabRuntimeConstructionContext,
@@ -209,7 +210,7 @@ function buildInputToolbar(
       if (sideChat) {
         // Enabled-model checks still apply; a side selection never substitutes one.
         if (getEnabledProviderForModel(model, plugin.settings) !== sideChat.runtime?.providerId) {
-          new Notice('Cannot switch provider inside a side chat.');
+          new Notice(t('chat.errors.sideProvider'));
           tab.ui.modelSelector.updateDisplay();
           return;
         }
@@ -225,7 +226,7 @@ function buildInputToolbar(
           plugin.settings,
         );
         if (!newProvider) {
-          new Notice('Select an available model in Claudian settings.');
+          new Notice(t('chat.errors.selectModel'));
           tab.ui.modelSelector.updateDisplay();
           return;
         }
@@ -274,7 +275,7 @@ function buildInputToolbar(
       const boundProvider = tab.providerId;
       const modelProvider = getProviderForModel(model, plugin.settings);
       if (!boundProvider || modelProvider !== boundProvider) {
-        new Notice('Cannot switch provider on a bound session. Start a new conversation instead.');
+        new Notice(t('chat.errors.boundProvider'));
         tab.ui.modelSelector.updateDisplay();
         return;
       }
@@ -332,7 +333,7 @@ function buildInputToolbar(
       const tab = runtimeRef.requirePublished();
       if (getSelectedSideChat()) {
         // Mode selection is provider-owned UI state that side chat does not project.
-        new Notice('Mode selection applies to the main chat.');
+        new Notice(t('chat.errors.mainMode'));
         tab.ui.modeSelector.updateDisplay();
         return;
       }

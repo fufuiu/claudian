@@ -21,6 +21,7 @@ import {
 import { onInlineEditEditorDestroyed } from '@/features/inline-edit/ui/InlineEditEditorLifetime';
 import { renderInlineEditMarkdownPreview } from '@/features/inline-edit/ui/inlineEditMarkdownPreview';
 import { normalizeInsertionText } from '@/features/inline-edit/ui/normalizeInsertionText';
+import { t } from '@/i18n/i18n';
 import { hideSelectionHighlight, showSelectionHighlight } from '@/shared/components/SelectionHighlight';
 import {
   ComposerDropdownController,
@@ -303,7 +304,7 @@ export class InlineEditModal {
     }
 
     if (!editorView) {
-      new Notice('Inline edit unavailable: could not access the active editor. Try reopening the note.');
+      new Notice(t('inlineEdit.noEditor'));
       return { decision: 'reject' };
     }
 
@@ -355,7 +356,7 @@ export class InlineEditModal {
         session.show();
       }).catch(() => {
         if (settled) return;
-        new Notice(`Inline edit unavailable: failed to start the ${providerContext.providerId} provider.`);
+        new Notice(t('inlineEdit.providerFailed', { provider: providerContext.providerId }));
         close();
       });
     });
@@ -418,7 +419,7 @@ export class InlineEditSession {
     this.resolvedProviderId = providerId;
     this.mentionDataProvider = new VaultMentionDataProvider(this.app, {
       onFileLoadError: () => {
-        new Notice('Failed to load vault files. Vault @-mentions may be unavailable.');
+        new Notice(t('inlineEdit.filesFailed'));
       },
     });
     this.mentionDataProvider.initializeInBackground();
@@ -562,9 +563,9 @@ export class InlineEditSession {
       cls: 'claudian-inline-input',
       attr: {
         type: 'text',
-        'aria-label': this.mode === 'cursor' ? 'Insert instructions' : 'Edit instructions',
+        'aria-label': this.mode === 'cursor' ? t('inlineEdit.insertInstructions') : t('inlineEdit.editInstructions'),
         placeholder: this.inputPlaceholder
-          ?? (this.mode === 'cursor' ? 'Insert instructions...' : 'Edit instructions...'),
+          ?? (this.mode === 'cursor' ? t('inlineEdit.insertPlaceholder') : t('inlineEdit.editPlaceholder')),
         spellcheck: 'false',
       },
     });
@@ -630,9 +631,9 @@ export class InlineEditSession {
 
     const actionsEl = previewEl.createDiv({ cls: 'claudian-inline-preview-actions' });
     actionsEl.setAttribute('role', 'toolbar');
-    actionsEl.setAttribute('aria-label', 'Inline edit actions');
-    actionsEl.appendChild(this.#createPreviewActionButton('Reject', 'reject', () => this.reject()));
-    actionsEl.appendChild(this.#createPreviewActionButton('Accept', 'accept', () => this.accept()));
+    actionsEl.setAttribute('aria-label', t('inlineEdit.actions'));
+    actionsEl.appendChild(this.#createPreviewActionButton(t('inlineEdit.reject'), 'reject', () => this.reject()));
+    actionsEl.appendChild(this.#createPreviewActionButton(t('inlineEdit.accept'), 'accept', () => this.accept()));
 
     void this.#renderMarkdownDiffPreview(bodyEl, diffOps);
     return previewEl;
@@ -648,7 +649,7 @@ export class InlineEditSession {
       text: label,
       attr: {
         type: 'button',
-        'aria-label': `${label} inline edit`,
+        'aria-label': t('inlineEdit.actionLabel', { label }),
         'aria-keyshortcuts': variant === 'accept' ? 'Enter' : 'Escape',
       },
     });
@@ -745,7 +746,7 @@ export class InlineEditSession {
     } catch (error) {
       if (this.#isGenerationActive(generation)) {
         if (!this.#isSourceUnchanged()) this.#rejectStaleSource();
-        else this.#handleError(error instanceof Error ? error.message : 'Error - try again');
+        else this.#handleError(error instanceof Error ? error.message : t('inlineEdit.retry'));
       }
       return;
     } finally {
@@ -774,7 +775,7 @@ export class InlineEditSession {
       } else if (result.clarification) {
         this.isConversing = true;
         this.instructionDraft = '';
-        this.inputPlaceholder = 'Reply to continue...';
+        this.inputPlaceholder = t('inlineEdit.continue');
         this.showAgentReply(result.clarification);
         if (this.inputEl) {
           this.inputEl.disabled = false;
@@ -783,14 +784,14 @@ export class InlineEditSession {
           this.inputEl.focus();
         }
       } else {
-        this.#handleError('No response from agent');
+        this.#handleError(t('inlineEdit.noResponse'));
       }
     } else {
       if (result.resetRequired) {
         this.isConversing = false;
         this.inlineEditService.resetConversation();
       }
-      this.#handleError(result.error || 'Error - try again');
+      this.#handleError(result.error || t('inlineEdit.retry'));
     }
   }
 
@@ -996,7 +997,7 @@ export class InlineEditSession {
     if (this.settled) {
       return;
     }
-    new Notice('Inline edit was not applied because the source document or selection changed.');
+    new Notice(t('inlineEdit.sourceChanged'));
     this.settled = true;
     this.cleanup();
     this.#focusEditor();

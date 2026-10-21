@@ -7,7 +7,7 @@ import type { ChatFeatureHost } from '@/features/chat/ChatFeatureHost';
 import { findRewindContext } from '@/features/chat/conversation/rewind';
 import { getResponseElementKind } from '@/features/chat/rendering/ResponseLayout';
 import { formatConversationDirectoryTitle } from '@/features/chat/utils/conversationDirectoryTitle';
-import { t } from '@/i18n/i18n';
+import { getCurrentLocale, t } from '@/i18n/i18n';
 import { bindCopyFeedback } from '@/shared/components/CopyableCodeFence';
 
 export interface MessageActionCallbacks {
@@ -115,7 +115,7 @@ export class MessageActions {
       // Obsidian renders aria-label as its tooltip; a title would duplicate it.
       toolbar.createSpan({
         cls: 'claudian-response-throughput', text: `${rate} tok/s`,
-        attr: { 'aria-label': `${stats.outputTokens.toLocaleString()} tokens · ${formatTurnDuration(stats.durationMs)}` },
+        attr: { 'aria-label': t('chat.composer.outputStats', { tokens: stats.outputTokens.toLocaleString(), duration: formatTurnDuration(stats.durationMs) }) },
       });
     }
     this.appendTimestamp(msgEl, msg.role === 'user' ? msg.timestamp : msg.completedAt);
@@ -132,13 +132,13 @@ export class MessageActions {
 
     const timestampEl = toolbar.createDiv({ cls: 'claudian-message-timestamp' });
     const timestamp = new Date(timestampMs);
-    const label = timestamp.toLocaleTimeString(undefined, {
+    const label = timestamp.toLocaleTimeString(getCurrentLocale(), {
       hour: '2-digit',
       minute: '2-digit',
       hourCycle: 'h23',
     });
     timestampEl.setText(label);
-    timestampEl.setAttribute('aria-label', timestamp.toLocaleString(undefined, { hourCycle: 'h23' }));
+    timestampEl.setAttribute('aria-label', timestamp.toLocaleString(getCurrentLocale(), { hourCycle: 'h23' }));
   }
 
   refreshTimestamps(): void {
@@ -161,7 +161,7 @@ export class MessageActions {
     const copyBtn = textEl.createEl('button', {
       cls: 'claudian-text-copy-btn',
       attr: {
-        'aria-label': 'Copy message',
+        'aria-label': t('chat.composer.copyMessage'),
         type: 'button',
       },
     });
@@ -215,7 +215,7 @@ export class MessageActions {
       () => text,
       () => {
         copyBtn.empty();
-        copyBtn.setText('Copied!');
+        copyBtn.setText(t('common.copied'));
         copyBtn.classList.add('copied');
       },
       () => {
@@ -231,7 +231,7 @@ export class MessageActions {
     const unavailable = button.dataset.branchUnavailable === 'true';
     button.disabled = busy || unavailable;
     // Obsidian uses aria-label for its tooltip; title would add a second one.
-    button.setAttribute('aria-description', busy ? 'Wait for the current response to finish.'
+    button.setAttribute('aria-description', busy ? t('chat.composer.waitResponse')
       : unavailable ? button.dataset.branchUnavailableReason ?? '' : '');
   }
 
@@ -265,14 +265,14 @@ export class MessageActions {
         cls: 'claudian-branch-marker', attr: { 'aria-hidden': 'true' },
       });
       if (marker) setIcon(marker, 'git-branch');
-      addButton('Previous branch', 'chevron-left', branches[index - 1], index === 0, 'No previous branch.');
+      addButton(t('chat.composer.previousBranch'), 'chevron-left', branches[index - 1], index === 0, t('chat.composer.noPreviousBranch'));
       const position = toolbar.createSpan({ cls: 'claudian-branch-position', text: `${index + 1}/${branches.length}`,
-        attr: { 'aria-label': `Branch ${index + 1} of ${branches.length}` } });
+        attr: { 'aria-label': t('chat.composer.branchPosition', { index: index + 1, count: branches.length }) } });
       toolbar.insertBefore(position, anchor);
-      addButton('Next branch', 'chevron-right', branches[index + 1], index === branches.length - 1, 'No next branch.');
+      addButton(t('chat.composer.nextBranch'), 'chevron-right', branches[index + 1], index === branches.length - 1, t('chat.composer.noNextBranch'));
     }
-    addButton('Branch from this prompt', 'git-branch', undefined, !message.userMessageId,
-      'Branching is available after this prompt is saved.');
+    addButton(t('chat.composer.branchPrompt'), 'git-branch', undefined, !message.userMessageId,
+      t('chat.composer.branchAfterSave'));
   }
 
   #getOrCreateToolbar(msgEl: HTMLElement): HTMLElement {
@@ -288,7 +288,7 @@ export class MessageActions {
       attr: { type: 'button' },
     });
     setIcon(copyBtn, 'copy');
-    copyBtn.setAttribute('aria-label', 'Copy message');
+    copyBtn.setAttribute('aria-label', t('chat.composer.copyMessage'));
     this.#bindCopy(copyBtn, content);
   }
 
@@ -338,7 +338,7 @@ export class MessageActions {
             try {
               await this.callbacks.rewind?.(messageId, mode);
             } catch (err) {
-              new Notice(t('chat.rewind.failed', { error: err instanceof Error ? err.message : 'Unknown error' }));
+              new Notice(t('chat.rewind.failed', { error: err instanceof Error ? err.message : t('common.unknownError') }));
             }
           });
         });
@@ -360,7 +360,7 @@ export class MessageActions {
         try {
           await this.callbacks.fork?.(messageId);
         } catch (err) {
-          new Notice(t('chat.fork.failed', { error: err instanceof Error ? err.message : 'Unknown error' }));
+          new Notice(t('chat.fork.failed', { error: err instanceof Error ? err.message : t('common.unknownError') }));
         }
       });
     });

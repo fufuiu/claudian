@@ -1,6 +1,7 @@
 import { TOOL_ASK_USER_QUESTION } from '@/core/tools/toolNames';
 import type { AskUserAnswers, ToolCallInfo } from '@/core/types';
 import type { InlineInteractionPrompts } from '@/features/chat/interactions/InlineInteractionPrompts';
+import { t } from '@/i18n/i18n';
 
 interface AsyncQuestionPromptsDeps {
   prompts: InlineInteractionPrompts;
@@ -37,7 +38,7 @@ export class AsyncQuestionPrompts {
     this.deps.onChange(tool);
     void this.deps.prompts.askUserQuestion(interactionId, tool.input, entry.abort.signal, {
       onSubmit: async answers => {
-        if (entry.abort.signal.aborted) throw new Error('This question has expired.');
+        if (entry.abort.signal.aborted) throw new Error(t('chat.questions.expired'));
         entry.submitting = true;
         try {
           await this.deps.answer(entry.tool, answers, entry.abort.signal);

@@ -19,6 +19,7 @@ import { consumeExecutionEvents } from '@/features/chat/execution/consumeExecuti
 import { ExecutionInteractions } from '@/features/chat/execution/ExecutionInteractions';
 import { ExecutionSessionSupervisor } from '@/features/chat/execution/ExecutionSessionSupervisor';
 import { SessionEventStream } from '@/features/chat/execution/SessionEventStream';
+import { t } from '@/i18n/i18n';
 import { toError } from '@/utils/error';
 
 export type SideChatTurnStatus =
@@ -445,7 +446,7 @@ export class SideChatSession {
       throw new Error('Side chat session is disposed');
     }
     if (this.#invalidated) {
-      throw new Error('This side chat has ended. Discard it and start a new side chat.');
+      throw new Error(t('chat.sideChat.ended'));
     }
   }
 }

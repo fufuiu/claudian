@@ -131,7 +131,7 @@ export const grokSettingsTabRenderer: ProviderSettingsTabRenderer = {
       validate: validateCLIPath,
     });
 
-    new Setting(container).setName('Models').setHeading();
+    new Setting(container).setName(t('settings.models')).setHeading();
     const modelPicker = renderProviderModelsSection(container, 'grok', 'Grok Build', workspace.modelCatalog!, () => modelWarning.refresh());
 
     renderEnvironmentSettingsSection({

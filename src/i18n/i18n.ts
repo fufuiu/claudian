@@ -146,6 +146,11 @@ export function getAvailableLocales(): Locale[] {
   return [...AVAILABLE_LOCALES];
 }
 
+/** Returns the selected interface locale for date and number formatting. */
+export function getCurrentLocale(): Locale {
+  return currentLocale;
+}
+
 /**
  * Get display name for a locale
  */

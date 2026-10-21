@@ -60,7 +60,7 @@ class SessionMentionWidget extends WidgetType {
   }
 
   toDOM(view: EditorView): HTMLElement {
-    return createChip(view, 'claudian-composer-session', `Session: ${this.title}`, 'message-circle-more', this.title);
+    return createChip(view, 'claudian-composer-session', t('chat.composer.sessionMention', { title: this.title }), 'message-circle-more', this.title);
   }
 }
 
@@ -74,9 +74,9 @@ class CommandWidget extends WidgetType {
   toDOM(view: EditorView): HTMLElement {
     if (this.kind === 'skill') {
       const name = this.token.slice(1);
-      return createChip(view, 'claudian-composer-skill', `Skill: ${name}`, 'zap', name);
+      return createChip(view, 'claudian-composer-skill', t('chat.composer.skillMention', { name }), 'zap', name);
     }
-    const el = createChip(view, 'claudian-composer-command', `Command: ${this.token}`, null, this.token.slice(1));
+    const el = createChip(view, 'claudian-composer-command', t('chat.composer.commandMention', { command: this.token }), null, this.token.slice(1));
     el.prepend(el.createSpan({ cls: 'claudian-composer-command-prefix', text: this.token[0] }));
     return el;
   }
@@ -120,7 +120,7 @@ export class ComposerEditor {
   private view: EditorView | null = null;
   private readonly historyConfig = new Compartment();
   private readonly placeholderConfig = new Compartment();
-  private placeholderText = 'Ask to make changes, @mention files, run /commands';
+  private placeholderText = t('chat.composer.placeholder');
   private ghostText: string | null = null;
   private destroyed = false;
   private ariaObserver: MutationObserver | null = null;
@@ -132,7 +132,7 @@ export class ComposerEditor {
   constructor(parent: HTMLElement, private readonly app: App, private readonly component: Component) {
     const host = parent.createDiv({
       cls: 'claudian-input claudian-composer-editor',
-      attr: { role: 'textbox', 'aria-label': 'Message', 'aria-multiline': 'true', tabindex: '0', dir: 'auto' },
+      attr: { role: 'textbox', 'aria-label': t('chat.composer.message'), 'aria-multiline': 'true', tabindex: '0', dir: 'auto' },
     });
     this.element = host as unknown as ComposerInputElement;
     this.removeFileLinkHandler = registerFileLinkHandler(app, host);
@@ -167,7 +167,7 @@ export class ComposerEditor {
         this.placeholderConfig.of(placeholder(this.placeholderText)),
         // CodeMirror turns off native spellcheck and autocorrect, which also disables macOS text replacements.
         EditorView.contentAttributes.of({
-          'aria-label': 'Message', 'aria-multiline': 'true', role: 'textbox', spellcheck: 'true', autocorrect: 'on',
+          'aria-label': t('chat.composer.message'), 'aria-multiline': 'true', role: 'textbox', spellcheck: 'true', autocorrect: 'on',
         }),
         EditorView.contentAttributes.of(view => {
           const description = this.ghostDescription(view.state.doc.length);

@@ -87,7 +87,7 @@ export function buildTabRuntimeControllers(
       applyProviderUIGating(tab, plugin);
       return true;
     } catch (error) {
-      new Notice(error instanceof Error ? error.message : 'Failed to initialize chat execution');
+      new Notice(error instanceof Error ? error.message : t('chat.errors.initializeChat'));
       return false;
     }
   };

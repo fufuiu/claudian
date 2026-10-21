@@ -431,7 +431,7 @@ describe('ClaudianPlugin', () => {
       await new Promise(resolve => setTimeout(resolve, 5));
       await (plugin as any).sessionInputCleanup;
       expect(files.has(inputPath)).toBe(true);
-      expect(Notice).toHaveBeenCalledWith('Failed to clean up obsolete session files; will retry next launch');
+      expect(Notice).toHaveBeenCalledWith('清理旧会话文件失败，将在下次启动时重试');
       plugin.onunload();
       await (plugin as any).applicationShutdownPromise;
       mockApp.workspace.onLayoutReady.mockClear();
@@ -2635,7 +2635,7 @@ describe('ClaudianPlugin', () => {
 
       expect(plugin.addRibbonIcon).toHaveBeenCalledWith(
         'bot',
-        'Open Claudian',
+        '打开 Claudian',
         expect.any(Function),
       );
       const ribbonCallback = (plugin.addRibbonIcon as jest.Mock).mock.calls[0][2];
@@ -2653,7 +2653,7 @@ describe('ClaudianPlugin', () => {
 
       expect(plugin.addCommand).toHaveBeenCalledWith({
         id: 'open-view',
-        name: 'Open chat view',
+        name: '打开聊天面板',
         callback: expect.any(Function),
       });
       const commandConfig = getRegisteredCommand('open-view');
@@ -2706,7 +2706,7 @@ describe('ClaudianPlugin', () => {
       } as any);
 
       const command = getRegisteredCommand('new-tab');
-      expect(command.name).toBe('New');
+      expect(command.name).toBe('新建');
       expect(command.checkCallback(false)).toBe(true);
       await new Promise<void>((resolve) => setImmediate(resolve));
 
@@ -2726,7 +2726,7 @@ describe('ClaudianPlugin', () => {
 
       const replaceCommand = getRegisteredCommand('new-session');
       const closeCommand = getRegisteredCommand('close-current-tab');
-      expect(replaceCommand.name).toBe('Replace current conversation');
+      expect(replaceCommand.name).toBe('替换当前对话');
       expect(replaceCommand.checkCallback(true)).toBe(false);
       expect(closeCommand.checkCallback(true)).toBe(false);
     });
@@ -3325,7 +3325,7 @@ describe('ClaudianPlugin', () => {
       await chatHostOf(plugin).conversationLifecycle.setArchived(conversation.id, true);
 
       expect(chatHostOf(plugin).getConversationSync(conversation.id)?.isArchived).toBe(true);
-      expect(Notice).toHaveBeenCalledWith('Codex CLI could not archive or restore its sessions: codex unavailable');
+      expect(Notice).toHaveBeenCalledWith('Codex CLI 无法归档或恢复会话：codex unavailable');
     });
 
     it('does not initialize providers without native session archive', async () => {
@@ -3639,7 +3639,7 @@ describe('ClaudianPlugin', () => {
         files.get(`${getDeviceSessionsPath(getHostnameKey())}/stale-session.meta.json`) ?? '{}',
       );
       expect(persisted.isArchived).toBe(true);
-      expect(Notice).toHaveBeenCalledWith('Auto-archived 2 inactive sessions');
+      expect(Notice).toHaveBeenCalledWith('已自动归档 2 个不活跃的会话');
     });
 
     it('skips sessions held by a deferred chat pane that has not mounted its view', async () => {

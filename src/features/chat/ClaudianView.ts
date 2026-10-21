@@ -26,6 +26,7 @@ import {
 import { ChatPresentationPlacement } from '@/features/chat/view/ChatPresentationPlacement';
 import { DualPaneLayout, type DualPaneLayoutElements } from '@/features/chat/view/DualPaneLayout';
 import type { ZenModeSlots, ZenModeSource, ZenPresentationPort } from '@/features/chat/zen/types';
+import { t } from '@/i18n/i18n';
 import { VaultMentionDataProvider } from '@/shared/mention/VaultMentionDataProvider';
 
 type LoadableView = {
@@ -412,7 +413,7 @@ export class ClaudianView extends ItemView implements ZenModeSource {
       attr: { type: 'button' },
     });
     setIcon(this.newTabButtonEl, 'square-plus');
-    this.newTabButtonEl.setAttribute('aria-label', 'New tab');
+    this.newTabButtonEl.setAttribute('aria-label', t('chat.sessions.newTab'));
     this.newTabButtonEl.addEventListener('click', () => this.requestNewTab());
 
     const newBtn = navActionsEl.createEl('button', {
@@ -420,7 +421,7 @@ export class ClaudianView extends ItemView implements ZenModeSource {
       attr: { type: 'button' },
     });
     setIcon(newBtn, 'square-pen');
-    newBtn.setAttribute('aria-label', 'New conversation');
+    newBtn.setAttribute('aria-label', t('chat.sessions.newConversation'));
     newBtn.addEventListener('click', () => this.requestNewConversation());
 
     this.sessions.mountHistoryControl(navActionsEl);
@@ -435,19 +436,19 @@ export class ClaudianView extends ItemView implements ZenModeSource {
   }
 
   private requestNewTab(): void {
-    void this.createNewTab().catch(() => new Notice('Failed to create tab'));
+    void this.createNewTab().catch(() => new Notice(t('chat.errors.createTab')));
   }
 
   private requestNewConversation(): void {
     void (async () => {
       await this.tabManager?.createNewConversation();
       this.sessions.invalidate();
-    })().catch(() => new Notice('Failed to create conversation'));
+    })().catch(() => new Notice(t('chat.errors.createConversation')));
   }
 
   private requestDualNew(): void {
     void this.sessionNavigation.activateOrCreateDraftTab()
-      .catch(() => new Notice('Failed to start a new conversation'));
+      .catch(() => new Notice(t('chat.errors.newConversation')));
   }
 
   async handleNewConversationCommand(): Promise<boolean> {
@@ -484,7 +485,7 @@ export class ClaudianView extends ItemView implements ZenModeSource {
   private handleTabClick(tabId: TabId): void {
     const switched = this.tabManager?.switchToTab(tabId);
     if (switched) {
-      void switched.catch(() => new Notice('Failed to switch tab'));
+      void switched.catch(() => new Notice(t('chat.errors.switchTab')));
     }
   }
 
@@ -496,7 +497,7 @@ export class ClaudianView extends ItemView implements ZenModeSource {
       await this.tabManager?.closeTab(tabId, force);
       this.updateTabBarVisibility();
     } catch {
-      new Notice('Failed to close tab');
+      new Notice(t('chat.errors.closeTab'));
     }
   }
 

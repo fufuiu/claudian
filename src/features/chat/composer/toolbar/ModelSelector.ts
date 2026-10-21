@@ -1,5 +1,6 @@
 import { nextToolbarId, runToolbarAction, ToolbarMenu, type ToolbarMenuGroup } from '@/features/chat/composer/toolbar/ToolbarMenu';
 import type { ToolbarCallbacks } from '@/features/chat/composer/toolbar/types';
+import { t } from '@/i18n/i18n';
 import { createProviderIconSvg } from '@/shared/icons';
 
 /** A section of the model menu plus a matching detail on the model button. */
@@ -27,7 +28,7 @@ export class ModelSelector {
     this.menu = new ToolbarMenu(parentEl, {
       anchorCls: 'claudian-toolbar-chip-anchor--model claudian-model-selector',
       buttonCls: 'claudian-model-btn',
-      menuLabel: 'Model options',
+      menuLabel: t('chat.toolbar.modelOptions'),
       popupRole: 'dialog',
       closeOnSelect: false,
       group: menuGroup,
@@ -97,11 +98,11 @@ export class ModelSelector {
         width: 12,
       });
     }
-    const label = modelInfo?.label || (currentModel ? 'Model unavailable' : 'Set up models');
+    const label = modelInfo?.label || (currentModel ? t('chat.toolbar.modelUnavailable') : t('chat.toolbar.setupModels'));
     this.labelEl.setText(label);
-    this.modelDescription = modelInfo ? `Model: ${label}` : label;
+    this.modelDescription = modelInfo ? t('chat.toolbar.modelLabel', { label }) : label;
     this.#updateAccessibleName();
-    this.menu.buttonEl.title = modelInfo ? '' : 'Choose an enabled model in provider settings. If discovery failed, refresh the model list.';
+    this.menu.buttonEl.title = modelInfo ? '' : t('chat.toolbar.chooseModel');
   }
 
   renderOptions() {
@@ -112,13 +113,13 @@ export class ModelSelector {
     if (!models.length) {
       this.optionsEl.createDiv({
         cls: 'claudian-toolbar-popover-empty',
-        text: 'No models available. Check provider settings and refresh the model list if discovery failed.',
+        text: t('chat.toolbar.noModels'),
         attr: { role: 'status' },
       });
     }
 
     const listEl = models.length
-      ? this.optionsEl.createDiv({ cls: 'claudian-model-list', attr: { role: 'listbox', 'aria-label': 'Model' } })
+      ? this.optionsEl.createDiv({ cls: 'claudian-model-list', attr: { role: 'listbox', 'aria-label': t('chat.toolbar.model') } })
       : null;
     // Ungrouped models sit directly in the list; each provider group gets a labelled group.
     let groupEl: HTMLElement | null = null;
@@ -157,7 +158,7 @@ export class ModelSelector {
             await this.callbacks.onModelChange(model.value);
             this.updateDisplay();
             this.renderOptions();
-          }, 'Failed to change model');
+          }, t('chat.errors.modelChange'));
         },
       });
     }

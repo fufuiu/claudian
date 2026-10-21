@@ -3,6 +3,7 @@ import { Notice } from 'obsidian';
 import type { Conversation } from '@/core/types';
 import type { ChatTabManagerHost, ChatViewHost } from '@/features/chat/ChatFeatureHost';
 import type { TabId } from '@/features/chat/tabs/ChatTab';
+import { t } from '@/i18n/i18n';
 
 /** Application conversation writes the lifecycle applies after its tab policy. */
 export interface ConversationLifecycleStore {
@@ -60,7 +61,7 @@ export class ConversationLifecycle {
       return;
     }
     if (!await this.#closeTabsBeforeArchive(conversationId)) {
-      new Notice('Running sessions cannot be archived');
+      new Notice(t('chat.sessions.runningCannotArchive'));
       return;
     }
     await this.deps.conversations.setConversationArchived(conversationId, true);
@@ -81,7 +82,7 @@ export class ConversationLifecycle {
         );
     const skippedCount = conversationIds.length - archivedCount;
     if (skippedCount > 0) {
-      new Notice(`Skipped ${skippedCount} ${skippedCount === 1 ? 'session that is' : 'sessions that are'} open or running`);
+      new Notice(t('chat.sessions.skippedOpen', { count: skippedCount, unit: skippedCount === 1 ? 'session that is' : 'sessions that are' }));
     }
   }
 
@@ -112,8 +113,8 @@ export class ConversationLifecycle {
     }
     if (skippedCount === 0) return;
     new Notice(conversationIds.length === 1
-      ? 'Running sessions cannot be deleted'
-      : `Skipped ${skippedCount} ${skippedCount === 1 ? 'session that is' : 'sessions that are'} running`);
+      ? t('chat.sessions.runningCannotDelete')
+      : t('chat.sessions.skippedRunning', { count: skippedCount, unit: skippedCount === 1 ? 'session that is' : 'sessions that are' }));
   }
 
   /** Repository deletion callback: returns every view's tabs bound to the record to a blank draft. */
@@ -140,7 +141,7 @@ export class ConversationLifecycle {
 
     for (const { manager, tabId } of boundTabs) {
       if (!await manager.closeTab(tabId)) {
-        throw new Error('Failed to close the session before archiving');
+        throw new Error(t('chat.errors.closeBeforeArchive'));
       }
     }
     return true;

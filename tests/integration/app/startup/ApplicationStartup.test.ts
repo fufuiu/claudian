@@ -5,6 +5,7 @@ import { type ApplicationDomains, startApplication } from '@/app/startup/Applica
 import { ProviderRegistry } from '@/core/providers/ProviderRegistry';
 import { ProviderSettingsCoordinator } from '@/core/providers/ProviderSettingsCoordinator';
 import { isVersionedRuntimeInputFingerprint } from '@/core/providers/settings/RuntimeInputFingerprint';
+import { setLocale, t } from '@/i18n/i18n';
 import * as sdkSession from '@/providers/claude/history/ClaudeHistoryStore';
 import { getCodexProviderSettings } from '@/providers/codex/settings';
 
@@ -85,9 +86,18 @@ describe('startApplication', () => {
 
   afterEach(async () => {
     await Promise.allSettled(disposals.splice(0).map(dispose => dispose()));
+    setLocale('en');
   });
 
   describe('settings', () => {
+    it('preserves an explicitly saved interface language', async () => {
+      mockApp.vault.adapter.exists.mockImplementation(async (path: string) => path === '.claudian/claudian-settings.json');
+      mockApp.vault.adapter.read.mockResolvedValue(JSON.stringify({ locale: 'en' }));
+      const domains = await loadApplication();
+      expect(domains.settings.getCommittedSettings().locale).toBe('en');
+      expect(t('common.delete')).toBe('Delete');
+    });
+
     it('should merge saved data with defaults', async () => {
       // Mock claudian-settings.json exists with custom values (Claudian-specific settings)
       mockApp.vault.adapter.exists.mockImplementation(async (path: string) => {
@@ -117,6 +127,8 @@ describe('startApplication', () => {
 
       // Compare persisted values; provider discovery may attach transient symbol metadata.
       expect(JSON.parse(JSON.stringify(domains.settings.getCommittedSettings()))).toEqual(DEFAULT_CLAUDIAN_SETTINGS);
+      expect(domains.settings.getCommittedSettings().locale).toBe('zh-CN');
+      expect(t('common.delete')).toBe('删除');
     });
 
     it('should use defaults when loadData returns empty object', async () => {

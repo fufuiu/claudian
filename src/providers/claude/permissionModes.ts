@@ -1,5 +1,7 @@
 import type { PermissionMode as SDKPermissionMode } from '@anthropic-ai/claude-agent-sdk';
 
+import { t } from '@/i18n/i18n';
+
 import { getProviderConfig } from '../../core/providers/providerConfig';
 import type {
   ProviderPermissionModeOption,
@@ -36,13 +38,13 @@ export const CLAUDE_PERMISSION_MODE_POLICY: ProviderPermissionModePolicy = Objec
 });
 
 export const CLAUDE_PERMISSION_MODE_OPTIONS: readonly ProviderPermissionModeOption[] = Object.freeze([
-  { value: 'auto', label: 'Auto', description: 'Claude handles permission decisions' },
-  { value: 'manual', label: 'Manual', description: 'Always ask before making changes' },
-  { value: 'acceptEdits', label: 'Accept edits', description: 'Automatically accept all file edits' },
+  { value: 'auto', get label() { return t('permissions.claude.auto.label'); }, get description() { return t('permissions.claude.auto.description'); } },
+  { value: 'manual', get label() { return t('permissions.claude.manual.label'); }, get description() { return t('permissions.claude.manual.description'); } },
+  { value: 'acceptEdits', get label() { return t('permissions.claude.acceptEdits.label'); }, get description() { return t('permissions.claude.acceptEdits.description'); } },
   {
     value: 'yolo',
-    label: 'YOLO',
-    description: 'Accept all permissions without asking',
+    get label() { return t('permissions.claude.yolo.label'); },
+    get description() { return t('permissions.claude.yolo.description'); },
     bypassesApprovals: true,
   },
 ]);

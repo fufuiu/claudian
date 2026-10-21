@@ -2,6 +2,7 @@ import type { App, ItemView } from 'obsidian';
 
 import type { CanvasSelectionContext } from '@/core/prompt/canvasContext';
 import type { ComposerContextTray } from '@/features/chat/composer/ComposerContextTray';
+import { t } from '@/i18n/i18n';
 
 type CanvasSelectionNode = { id?: unknown };
 
@@ -89,8 +90,7 @@ export class CanvasSelectionController {
   private updateIndicator(): void {
     if (this.storedSelection) {
       const { nodeIds } = this.storedSelection;
-      const nodeLabel = nodeIds.length === 1 ? '1 node' : `${nodeIds.length} nodes`;
-      const label = `${nodeLabel} selected`;
+      const label = t('chat.composer.nodesSelected', { count: nodeIds.length, unit: nodeIds.length === 1 ? 'node' : 'nodes' });
       this.contextTray.setItems('canvas-selection', [{
         id: 'canvas-selection',
         kind: 'selection',

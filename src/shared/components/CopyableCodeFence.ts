@@ -1,3 +1,4 @@
+import { t } from '@/i18n/i18n';
 const COPY_FEEDBACK_DURATION_MS = 1_500;
 
 /** Copies `text()` on click and shows copied feedback until the shared timeout elapses. */
@@ -45,7 +46,7 @@ export function enhanceRenderedCodeFence(pre: HTMLPreElement): HTMLElement {
     bindCopyFeedback(
       label,
       () => code.textContent ?? '',
-      () => label.setText('Copied!'),
+      () => label.setText(t('common.copied')),
       () => label.setText(language),
     );
   }

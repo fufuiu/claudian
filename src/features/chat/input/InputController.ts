@@ -222,11 +222,11 @@ export class InputController {
       providerId: this.#getActiveProviderId(),
       assertCurrent: () => {
         if (state.currentConversationId !== conversationId || !state.messages.some(message => message.toolCalls?.includes(tool))) {
-          throw new Error('This question belongs to a different conversation.');
+          throw new Error(t('chat.errors.questionConversation'));
         }
         if (!this.deps.canStartTurn() || state.cancelRequested || state.isSwitchingConversation
           || state.isResettingToNewChat || state.isRewinding) {
-          throw new Error('The answer was not sent. Please try again.');
+          throw new Error(t('chat.errors.answerNotSent'));
         }
       },
       prepare: reply => {
@@ -405,14 +405,14 @@ export class InputController {
           signal.throwIfAborted();
           if (state.currentConversationId !== conversationId || !this.deps.canStartTurn()
             || (destination === 'side' && sideChat?.runtime !== capturedSideRuntime)) {
-            throw new Error('The destination changed while preparing session references.');
+            throw new Error(t('chat.errors.destinationChanged'));
           }
           const turnRequest = { ...captured.turnRequest, text: resolved.text, draftContent: original.content,
             sessionReferences: resolved.references };
           if (destination === 'side') {
             const accepted = await sideChat?.submitToSide(resolved.text, images,
               { ...sideContext, sessionReferences: resolved.references }, resolved.text);
-            if (!accepted) throw new Error('The side chat could not accept this message.');
+            if (!accepted) throw new Error(t('chat.errors.sideDeclined'));
           } else if (ownsMainTurn) {
             handedOff = true;
             releaseAdmission?.();

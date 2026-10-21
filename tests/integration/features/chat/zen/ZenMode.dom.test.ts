@@ -22,7 +22,7 @@ import type { ChatFeatureHost } from '@/features/chat/ChatFeatureHost';
 import { destroyTab } from '@/features/chat/tabs/TabLifecycle';
 import { createTabRuntime } from '@/features/chat/tabs/TabRuntimeFactory';
 import type { AssembledTabRuntime } from '@/features/chat/tabs/types';
-import { FLAVOR_TEXTS } from '@/features/chat/turns/flavorTexts';
+import { getFlavorTexts } from '@/features/chat/turns/flavorTexts';
 import { ZenModeController } from '@/features/chat/zen/ZenModeController';
 import { adaptCodexStreamChunk } from '@/providers/codex/execution/CodexExecutionEventNormalizer';
 import { CodexNotificationRouter } from '@/providers/codex/runtime/CodexNotificationRouter';
@@ -412,7 +412,7 @@ function waitingIndicatorText(tab: AssembledTabRuntime): string | null {
 }
 
 async function waitForFlavor(tab: AssembledTabRuntime, timeout?: number): Promise<string> {
-  await waitFor(() => expect(FLAVOR_TEXTS).toContain(waitingIndicatorText(tab)), { timeout });
+  await waitFor(() => expect(getFlavorTexts()).toContain(waitingIndicatorText(tab)), { timeout });
   return waitingIndicatorText(tab)!;
 }
 

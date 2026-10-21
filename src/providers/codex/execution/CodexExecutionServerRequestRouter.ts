@@ -7,6 +7,7 @@ import {
   type ProviderToolPolicy,
 } from '@/core/execution';
 import type { ApprovalDecision } from '@/core/types';
+import { t } from '@/i18n/i18n';
 import { normalizeCodexToolName } from '@/providers/codex/normalization/codexToolNormalization';
 import type {
   CommandApprovalRequest,
@@ -333,12 +334,12 @@ export class CodexExecutionServerRequestRouter {
         input: {
           questions: [{
             id: MCP_CONFIRMATION_QUESTION_ID,
-            header: 'MCP request',
-            question: `MCP server: ${params.serverName}\n\n${params.message}`,
+            header: t('chat.questions.mcpRequest'),
+            question: t('chat.questions.mcpServer', { server: params.serverName, message: params.message }),
             options: [
-              { label: 'Cancel', description: 'Cancel this request.', value: 'cancel' },
-              { label: 'Decline', description: 'Decline this request.', value: 'decline' },
-              { label: 'Allow', description: 'Accept this request.', value: 'accept' },
+              { label: t('common.cancel'), description: t('chat.questions.cancelRequest'), value: 'cancel' },
+              { label: t('chat.questions.decline'), description: t('chat.questions.declineRequest'), value: 'decline' },
+              { label: t('chat.questions.allow'), description: t('chat.questions.acceptRequest'), value: 'accept' },
             ],
             multiSelect: false,
             isOther: false,
@@ -474,9 +475,9 @@ function isDynamicToolAllowed(
 
 function describeCommandApproval(params: CommandApprovalRequest): string {
   if (params.networkApprovalContext) {
-    return `Allow ${params.networkApprovalContext.protocol} access to ${params.networkApprovalContext.host}`;
+    return t('chat.questions.networkAccess', { protocol: params.networkApprovalContext.protocol, host: params.networkApprovalContext.host });
   }
-  return params.command ? `Execute: ${params.command}` : 'Execute command';
+  return params.command ? t('chat.questions.execute', { command: params.command }) : t('chat.questions.executeCommand');
 }
 
 function buildCommandApprovalDecisionOptions(
@@ -492,25 +493,25 @@ function mapDecisionOption(
   params: CommandApprovalRequest,
 ): ProviderApprovalDecisionOption {
   if (decision === 'accept') {
-    return { label: 'Allow once', value: 'allow-once', decision: 'allow' };
+    return { label: t('chat.questions.allowOnce'), value: 'allow-once', decision: 'allow' };
   }
   if (decision === 'acceptForSession') {
     return {
-      label: 'Always allow',
+      label: t('chat.questions.alwaysAllow'),
       value: 'allow-always',
       decision: 'allow-always',
     };
   }
   if (decision === 'decline') {
-    return { label: 'Deny', value: 'deny', decision: 'deny' };
+    return { label: t('chat.questions.deny'), value: 'deny', decision: 'deny' };
   }
   if (decision === 'cancel') {
-    return { label: 'Cancel', value: 'cancel', decision: 'cancel' };
+    return { label: t('common.cancel'), value: 'cancel', decision: 'cancel' };
   }
   if ('acceptWithExecpolicyAmendment' in decision) {
     return {
-      label: 'Allow similar commands',
-      description: 'Approve and store an exec policy amendment.',
+      label: t('chat.questions.allowSimilar'),
+      description: t('chat.questions.storePolicy'),
       value: JSON.stringify(decision),
     };
   }
@@ -518,8 +519,8 @@ function mapDecisionOption(
   const amendment = decision.applyNetworkPolicyAmendment.network_policy_amendment;
   const host = amendment.host || params.networkApprovalContext?.host || 'host';
   return {
-    label: `${amendment.action === 'deny' ? 'Deny' : 'Allow'} ${host} for this session`,
-    description: `Apply a ${amendment.action} rule for ${host}.`,
+    label: t('chat.questions.hostSession', { action: amendment.action === 'deny' ? t('chat.questions.deny') : t('chat.questions.allow'), host }),
+    description: t('chat.questions.hostRule', { action: amendment.action === 'deny' ? t('chat.questions.deny') : t('chat.questions.allow'), host }),
     value: JSON.stringify(decision),
   };
 }

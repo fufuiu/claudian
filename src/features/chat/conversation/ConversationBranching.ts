@@ -8,6 +8,7 @@ import type { ChatExecutionCoordinator } from '@/features/chat/execution/ChatExe
 import type { MessageRenderer } from '@/features/chat/rendering/MessageRenderer';
 import type { ChatState } from '@/features/chat/state/ChatState';
 import type { TabSession } from '@/features/chat/tabs/TabSession';
+import { t } from '@/i18n/i18n';
 
 export interface ConversationBranchingDeps {
   state: ChatState;
@@ -56,7 +57,7 @@ export class ConversationBranching {
   async navigate(messageId: string, branchMessageId?: string): Promise<void> {
     const { state, drafts, session: navigation } = this.deps;
     if (drafts.destination !== 'main') {
-      new Notice('Collapse side chat before changing conversation branches.');
+      new Notice(t('chat.errors.sideBeforeBranch'));
       return;
     }
     if (!navigation.canNavigateConversation) return;
@@ -70,12 +71,12 @@ export class ConversationBranching {
     if (!conversationId || !message || message.role !== 'user' || message.isInterrupt || message.isRebuiltContext) return;
     if (messages.find(item => item.role === 'user' && !item.isInterrupt && !item.isRebuiltContext) === message) return;
     if (!message.userMessageId) {
-      new Notice('Branching is available after this prompt is saved.');
+      new Notice(t('chat.composer.branchAfterSave'));
       return;
     }
     const previousDraft = drafts.capture('main');
     if (previousDraft.content.trim() || previousDraft.images.length) {
-      new Notice('Save or clear your draft before changing conversation branches.');
+      new Notice(t('chat.errors.draftBeforeBranch'));
       return;
     }
     if (!branchMessageId) {
@@ -105,10 +106,10 @@ export class ConversationBranching {
   async commitDraft(signal?: AbortSignal): Promise<ConversationBranchResult> {
     const branch = this.#state;
     if (branch.kind === 'idle') return { status: 'committed', messages: this.deps.state.messages };
-    if (branch.kind === 'committing') return { status: 'failed', error: 'Branch navigation is in progress.' };
+    if (branch.kind === 'committing') return { status: 'failed', error: t('chat.errors.branchBusy') };
     if (branch.kind === 'recovery') return this.#changeBranch(undefined, undefined, signal);
     if (this.deps.state.currentConversationId !== branch.draft.conversationId
-      || !this.deps.state.messages.includes(branch.draft.message)) return { status: 'failed', error: 'Conversation changed.' };
+      || !this.deps.state.messages.includes(branch.draft.message)) return { status: 'failed', error: t('chat.errors.conversationChanged') };
     return this.#changeBranch(branch.draft.message, undefined, signal);
   }
 
@@ -132,7 +133,7 @@ export class ConversationBranching {
   async #changeBranch(message?: ChatMessage, branchMessageId?: string, signal?: AbortSignal): Promise<ConversationBranchResult> {
     const { state, renderer } = this.deps;
     const conversationId = state.currentConversationId;
-    if (!conversationId) return { status: 'failed', error: 'Conversation is missing.' };
+    if (!conversationId) return { status: 'failed', error: t('chat.errors.conversationMissing') };
     const previous = this.#state;
     let draft = previous.kind === 'idle' ? undefined : previous.draft;
     let coordinator: ChatExecutionCoordinator | null = null;
@@ -140,7 +141,7 @@ export class ConversationBranching {
       && (!coordinator || coordinator === this.deps.getExecutionCoordinator());
     this.#state = { kind: 'committing', draft };
     this.deps.setRewinding(true);
-    let result: ConversationBranchResult = { status: 'failed', error: 'Execution is unavailable.' };
+    let result: ConversationBranchResult = { status: 'failed', error: t('chat.errors.executionUnavailable') };
     try {
       if (this.deps.ensureExecutionInitialized && !await this.deps.ensureExecutionInitialized()) return result;
       coordinator = this.deps.getExecutionCoordinator();
@@ -150,14 +151,14 @@ export class ConversationBranching {
       result = message
         ? await coordinator.navigateConversationBranch({ ...request, userMessageId: message.userMessageId!, branchMessageId })
         : await coordinator.reconcileConversationBranch(request);
-      if (!isCurrent()) return { status: 'failed', error: 'Conversation changed.' };
+      if (!isCurrent()) return { status: 'failed', error: t('chat.errors.conversationChanged') };
       // Recover once immediately. Further retries use reconciliation, never replay the navigation.
       if (result.status === 'recovery-required') {
         const recovered = await coordinator.reconcileConversationBranch(request);
         result = recovered.status === 'committed' || recovered.status === 'cancelled' ? recovered : { status: 'recovery-required',
-          error: 'error' in recovered ? recovered.error : 'Branch recovery was cancelled.' };
+          error: 'error' in recovered ? recovered.error : t('chat.errors.branchCancelled') };
       }
-      if (!isCurrent()) return { status: 'failed', error: 'Conversation changed.' };
+      if (!isCurrent()) return { status: 'failed', error: t('chat.errors.conversationChanged') };
       if ((result.status === 'committed' || result.status === 'cancelled') && result.messages) {
         state.messages = result.messages;
         state.usage = result.usage ?? null;
@@ -172,12 +173,12 @@ export class ConversationBranching {
         try { await this.deps.save(); }
         catch (error) { result = { status: 'recovery-required', messages: result.messages, error: String(error) }; }
       }
-      if (!isCurrent()) return { status: 'failed', error: 'Conversation changed.' };
+      if (!isCurrent()) return { status: 'failed', error: t('chat.errors.conversationChanged') };
       if (result.status === 'failed' || result.status === 'recovery-required') new Notice(result.error);
       return result;
     } catch (error) {
       result = { status: 'recovery-required', error: String(error) };
-      new Notice(`Could not reconcile conversation branch: ${result.error}`);
+      new Notice(t('chat.errors.branchReconcile', { error: result.error }));
       return result;
     } finally {
       if (!isCurrent()) this.#state = { kind: 'idle' };

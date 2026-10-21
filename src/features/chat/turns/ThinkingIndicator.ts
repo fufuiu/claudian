@@ -1,5 +1,6 @@
 import type { ChatState } from '@/features/chat/state/ChatState';
-import { FLAVOR_TEXTS } from '@/features/chat/turns/flavorTexts';
+import { getFlavorTexts } from '@/features/chat/turns/flavorTexts';
+import { t } from '@/i18n/i18n';
 import { formatDurationMmSs } from '@/utils/date';
 
 export interface ThinkingIndicatorDeps {
@@ -137,7 +138,8 @@ export class ThinkingIndicator {
         ? `claudian-thinking ${overrideCls}`
         : 'claudian-thinking';
       state.thinkingEl = state.currentContentEl.createDiv({ cls });
-      const text = overrideText || FLAVOR_TEXTS[Math.floor(Math.random() * FLAVOR_TEXTS.length)];
+      const flavors = getFlavorTexts();
+      const text = overrideText || flavors[Math.floor(Math.random() * flavors.length)];
       state.thinkingEl.createSpan({ text });
       state.waitingStatus = text;
 
@@ -152,7 +154,7 @@ export class ThinkingIndicator {
           return;
         }
         const elapsedSeconds = Math.floor((performance.now() - state.responseStartTime) / 1000);
-        timerSpan.setText(` (esc to interrupt · ${formatDurationMmSs(elapsedSeconds)})`);
+        timerSpan.setText(t('chat.status.interruptHint', { duration: formatDurationMmSs(elapsedSeconds) }));
       };
       updateTimer();
 

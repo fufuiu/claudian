@@ -1,3 +1,5 @@
+import { t } from '@/i18n/i18n';
+
 import type {
   ProviderPermissionModeOption,
   ProviderPermissionModePolicy,
@@ -14,13 +16,13 @@ export const GROK_PERMISSION_MODE_POLICY: ProviderPermissionModePolicy = Object.
 });
 
 export const GROK_PERMISSION_MODE_OPTIONS: readonly ProviderPermissionModeOption[] = Object.freeze([
-  { value: 'auto', label: 'Auto', description: 'Grok reviews actions and blocks risky ones' },
-  { value: 'normal', label: 'Ask', description: 'Ask before edits and commands' },
-  { value: 'acceptEdits', label: 'Accept edits', description: 'Automatically accept file edits' },
+  { value: 'auto', get label() { return t('permissions.grok.auto.label'); }, get description() { return t('permissions.grok.auto.description'); } },
+  { value: 'normal', get label() { return t('permissions.grok.normal.label'); }, get description() { return t('permissions.grok.normal.description'); } },
+  { value: 'acceptEdits', get label() { return t('permissions.grok.acceptEdits.label'); }, get description() { return t('permissions.grok.acceptEdits.description'); } },
   {
     value: 'yolo',
-    label: 'YOLO',
-    description: 'Accept all permissions without asking',
+    get label() { return t('permissions.grok.yolo.label'); },
+    get description() { return t('permissions.grok.yolo.description'); },
     bypassesApprovals: true,
   },
 ]);

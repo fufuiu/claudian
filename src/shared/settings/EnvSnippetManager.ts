@@ -140,7 +140,7 @@ export class EnvSnippetModal extends Modal {
           cls: 'claudian-snippet-alias-input',
         });
         aliasInput.value = existingAliases[modelId] ?? '';
-        aliasInput.setAttribute('aria-label', `Alias for ${modelId}`);
+        aliasInput.setAttribute('aria-label', t('settings.customModelAliases.ariaLabel', { model: modelId }));
         aliasInput.setAttribute('aria-description', t('settings.customModelAliases.ariaDescription'));
         modelAliasInputs.set(modelId, aliasInput);
 
@@ -150,7 +150,7 @@ export class EnvSnippetModal extends Modal {
           cls: 'claudian-snippet-limit-input',
         });
         input.value = existingLimits[modelId] ? formatContextLimit(existingLimits[modelId]) : '';
-        input.setAttribute('aria-label', `Context window for ${modelId}`);
+        input.setAttribute('aria-label', t('settings.customContextLimits.label', { model: modelId }));
         contextLimitInputs.set(modelId, input);
       }
     };
@@ -335,7 +335,7 @@ export class EnvSnippetManager {
             settings.envSnippets.push(snippet);
           });
           this.render();
-          new Notice(`Environment snippet "${snippet.name}" saved`);
+          new Notice(t('settings.envSnippets.saved', { name: snippet.name }));
         })();
       }
     );
@@ -409,7 +409,7 @@ export class EnvSnippetManager {
               }
             });
             this.render();
-            new Notice(`Environment snippet "${updatedSnippet.name}" updated`);
+            new Notice(t('settings.envSnippets.updated', { name: updatedSnippet.name }));
           }
         })();
       }
@@ -422,7 +422,7 @@ export class EnvSnippetManager {
       settings.envSnippets = settings.envSnippets.filter(s => s.id !== snippet.id);
     });
     this.render();
-    new Notice(`Environment snippet "${snippet.name}" deleted`);
+    new Notice(t('settings.envSnippets.deleted', { name: snippet.name }));
   }
 
   public refresh() {

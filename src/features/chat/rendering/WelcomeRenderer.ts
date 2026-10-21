@@ -1,3 +1,5 @@
+import { t } from '@/i18n/i18n';
+
 const WELCOME_BRAND_NAME = 'Claudian';
 
 export function renderWelcomeContent(
@@ -38,37 +40,37 @@ export function pickWelcomeGreeting(name: string | undefined, now: Date, random:
   const day = now.getDay(); // 0 = Sunday, 6 = Saturday
 
   const personalize = (base: string, noNameFallback?: string): string =>
-    name ? `${base}, ${name}` : (noNameFallback ?? base);
+    name ? t('chat.greetings.personalized', { greeting: base, name }) : (noNameFallback ?? base);
 
   const dayGreetings: Record<number, string[]> = {
-    0: [personalize('Happy Sunday'), 'Sunday session?', 'Welcome to the weekend'],
-    1: [personalize('Happy Monday'), personalize('Back at it', 'Back at it!')],
-    2: [personalize('Happy Tuesday')],
-    3: [personalize('Happy Wednesday')],
-    4: [personalize('Happy Thursday')],
-    5: [personalize('Happy Friday'), personalize('That Friday feeling')],
-    6: [personalize('Happy Saturday', 'Happy Saturday!'), personalize('Welcome to the weekend')],
+    0: [personalize(t('chat.greetings.sunday')), t('chat.greetings.sundaySession'), t('chat.greetings.weekend')],
+    1: [personalize(t('chat.greetings.monday')), personalize(t('chat.greetings.backAtIt'), t('chat.greetings.backAtItBang'))],
+    2: [personalize(t('chat.greetings.tuesday'))],
+    3: [personalize(t('chat.greetings.wednesday'))],
+    4: [personalize(t('chat.greetings.thursday'))],
+    5: [personalize(t('chat.greetings.friday')), personalize(t('chat.greetings.fridayFeeling'))],
+    6: [personalize(t('chat.greetings.saturday'), t('chat.greetings.saturdayBang')), personalize(t('chat.greetings.weekend'))],
   };
 
   const timeGreetings = (): string[] => {
     if (hour >= 5 && hour < 12) {
-      return [personalize('Good morning'), 'Coffee and Claudian time?'];
+      return [personalize(t('chat.greetings.morning')), t('chat.greetings.coffee')];
     } else if (hour >= 12 && hour < 18) {
-      return [personalize('Good afternoon'), personalize('Hey there'), personalize("How's it going") + '?'];
+      return [personalize(t('chat.greetings.afternoon')), personalize(t('chat.greetings.hey')), personalize(t('chat.greetings.howGoing')) + '?'];
     } else if (hour >= 18 && hour < 22) {
-      return [personalize('Good evening'), personalize('Evening'), personalize('How was your day') + '?'];
+      return [personalize(t('chat.greetings.evening')), personalize(t('chat.greetings.eveningShort')), personalize(t('chat.greetings.yourDay')) + '?'];
     }
-    return ['Hello, night owl', personalize('Evening')];
+    return [t('chat.greetings.nightOwl'), personalize(t('chat.greetings.eveningShort'))];
   };
 
   const generalGreetings = [
-    personalize('Hey there'),
-    name ? `Hi ${name}, how are you?` : 'Hi, how are you?',
-    personalize("How's it going") + '?',
-    personalize('Welcome back') + '!',
-    personalize("What's new") + '?',
-    ...(name ? [`${name} returns!`] : []),
-    'You are absolutely right!',
+    personalize(t('chat.greetings.hey')),
+    name ? t('chat.greetings.hiName', { name }) : t('chat.greetings.hi'),
+    personalize(t('chat.greetings.howGoing')) + '?',
+    personalize(t('chat.greetings.welcomeBack')) + '!',
+    personalize(t('chat.greetings.whatsNew')) + '?',
+    ...(name ? [t('chat.greetings.returns', { name })] : []),
+    t('chat.greetings.right'),
   ];
 
   const greetings = [

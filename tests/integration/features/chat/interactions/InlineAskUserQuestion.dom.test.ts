@@ -1,8 +1,11 @@
 /** @jest-environment jsdom */
 
 import { fireEvent, within } from '@testing-library/dom';
+import { axe } from 'jest-axe';
 
 import { InlineAskUserQuestion } from '@/features/chat/interactions/InlineAskUserQuestion';
+import { InlineInteractionPrompts } from '@/features/chat/interactions/InlineInteractionPrompts';
+import { setLocale } from '@/i18n/i18n';
 
 HTMLElement.prototype.empty = function () { this.replaceChildren(); };
 HTMLElement.prototype.addClass = function (...classes) { this.classList.add(...classes); };
@@ -14,6 +17,25 @@ HTMLElement.prototype.scrollIntoView = function () {};
 HTMLElement.prototype.setText = function (text) { this.textContent = String(text); };
 
 beforeEach(() => document.body.replaceChildren());
+afterEach(() => setLocale('en'));
+
+it('localizes approval controls without changing the delivered permission decision', async () => {
+  setLocale('zh-CN');
+  const prompts = new InlineInteractionPrompts({ getPromptParentEl: () => document.body });
+  const result = prompts.requestApproval('localized-approval', 'Bash', {}, 'npm test');
+  const panel = within(document.body).getByRole('region', { name: '需要授权' });
+  expect(within(panel).getByText('是否允许此操作？')).toBeTruthy();
+  expect(within(panel).getByRole('button', { name: '拒绝' })).toBeTruthy();
+  expect(within(panel).getByRole('button', { name: '始终允许' })).toBeTruthy();
+  expect(await axe(panel)).toHaveNoViolations();
+  fireEvent.click(within(panel).getByRole('button', { name: '允许一次' }));
+  await expect(result).resolves.toBe('allow');
+
+  setLocale('en');
+  const next = prompts.requestApproval('english-approval', 'Bash', {}, 'npm test');
+  fireEvent.click(within(document.body).getByRole('button', { name: 'Deny' }));
+  await expect(next).resolves.toBe('deny');
+});
 
 it.each([
   ['ArrowDown', 'Always allow'],

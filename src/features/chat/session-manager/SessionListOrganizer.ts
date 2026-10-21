@@ -4,6 +4,8 @@ import type {
   SessionManagerSort,
 } from '@/core/types';
 import { isProvisionalNotePath } from '@/features/chat/session-manager/ProvisionalNoteNames';
+import { t } from '@/i18n/i18n';
+import type { TranslationKey } from '@/i18n/types';
 
 export type SessionListSectionKind = 'list' | 'recency' | 'content' | 'ungrouped' | 'missing';
 
@@ -27,11 +29,11 @@ interface OrganizeSessionListOptions {
 }
 
 const DAY_MS = 86_400_000;
-const RECENCY_GROUPS: ReadonlyArray<{ key: string; label: string; maxAgeDays: number }> = [
-  { key: 'recency:7d', label: 'Past week', maxAgeDays: 7 },
-  { key: 'recency:14d', label: 'Past 2 weeks', maxAgeDays: 14 },
-  { key: 'recency:30d', label: 'Past month', maxAgeDays: 30 },
-  { key: 'recency:older', label: 'Older', maxAgeDays: Infinity },
+const RECENCY_GROUPS: ReadonlyArray<{ key: string; label: TranslationKey; maxAgeDays: number }> = [
+  { key: 'recency:7d', label: 'chat.sessions.pastWeek', maxAgeDays: 7 },
+  { key: 'recency:14d', label: 'chat.sessions.pastTwoWeeks', maxAgeDays: 14 },
+  { key: 'recency:30d', label: 'chat.sessions.pastMonth', maxAgeDays: 30 },
+  { key: 'recency:older', label: 'chat.sessions.older', maxAgeDays: Infinity },
 ];
 
 export function isLegacyProvisionalLinkedContent(
@@ -59,7 +61,7 @@ function groupByRecency(
   const sections = RECENCY_GROUPS.map(({ key, label }): SessionListSection => ({
     key,
     kind: 'recency',
-    label,
+    label: t(label),
     conversations: [],
   }));
   for (const conversation of sortedConversations) {
@@ -175,7 +177,7 @@ export function organizeSessionList(
     sections.push({
       key: 'ungrouped',
       kind: 'ungrouped',
-      label: 'Unlinked',
+      label: t('chat.sessions.unlinked'),
       conversations: ungrouped,
     });
   }
