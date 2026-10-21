@@ -41,8 +41,8 @@
   测试总数从 7312 增至 8860）；性能检查通过，冷模块加载中位
   98.9 ms，超过 50 ms 提示线，未达复核线。
 - 已通过 Obsidian CLI 重载并打开真实聊天面板，确认输入提示、推理强度、
-  权限选项和命令菜单显示中文；用户正在试用（2.3.15 时确认，2.3.27 合并
-  后尚未重新安装试用，部署前按下方"Personal OS 试用安装"流程备份）。
+  权限选项和命令菜单显示中文；用户正在试用（2.3.15 时确认；2.3.27 构建
+  已于 2026-10-22 安装到知识库，界面验收待用户重载后确认）。
 
 ### 后续汉化与上游同步
 
@@ -61,16 +61,24 @@
 ### Personal OS 试用安装
 
 - 知识库：`/home/nldff/文档/obsidian/Personal OS`。
-- 实际插件 ID 为 `realclaudian`，安装目录是该知识库的
-  `.obsidian/plugins/realclaudian/`，与源码仓库目录名 `claudian` 不同。
-- 已复制并校验 `main.js`、`manifest.json`、`styles.css`，保留现有
-  `data.json`、`.claudian/claudian-settings.json`、会话和笔记。
-- 本次覆盖前的备份位于源码仓库
-  `.context/plugin-backups/20261007-221445/`；安装包和界面截图也在 `.context/`。
+- 实际插件 ID 为 `realclaudian`（manifest id）。安装目录 2026-10-22 实测
+  已由 `realclaudian/` 改名为 `.obsidian/plugins/obsidian-claudian/`，
+  `community-plugins.json` 仍以 `realclaudian` 启用；源码仓库目录名
+  `claudian` 与两者都不同。
+- 2026-10-22 已安装汉化 `2.3.27` 构建并逐文件校验 `main.js`、
+  `manifest.json`、`styles.css`；覆盖前旧文件（汉化 2.3.15 构建）备份在
+  `.obsidian/plugin-backups/obsidian-claudian-20261022-011513/`。
+  该目录当时无 `data.json` 等用户数据文件。
+- 验证旧构建性质时注意：语言包 JSON 由 `compressedStaticAssets` 插件
+  压缩后嵌入 `main.js`，直接 grep 中文串恒为 0，不能以此区分官方/汉化
+  构建；可靠判据是压缩块内容或 minified 默认值 `locale:"zh-CN"`。
+- 2026-10-07 的旧备份仍在源码仓库 `.context/plugin-backups/20261007-221445/`。
   后续覆盖前仍须备份原来的三个发布文件，不替换整个插件目录。
 - 当前 `.env.local` 未设置 `OBSIDIAN_VAULT`。构建脚本自动复制目标使用
-  `claudian` 目录；启用自动复制前必须核对其与实际插件 ID 的一致性。
-- 部署后校验文件，并用 Obsidian CLI 重载 `realclaudian`、打开聊天面板检查。
+  `claudian` 目录名，与实际安装目录 `obsidian-claudian` 不一致；
+  启用自动复制前必须改成实际目录。
+- 部署后校验文件，并提示用户重载插件（或用 Obsidian CLI 重载
+  `realclaudian`）、打开聊天面板检查。
   在 Obsidian 中更新官方插件会覆盖本地汉化构建。
 
 ## Loading and verification
