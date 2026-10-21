@@ -28,6 +28,7 @@ import {
 } from '@/providers/pi/execution';
 import { PiConversationHistoryService } from '@/providers/pi/history/PiConversationHistoryService';
 import type { PiLaunchSpec } from '@/providers/pi/runtime/PiLaunchSpecBuilder';
+import { PiRPCResponseError } from '@/providers/pi/runtime/PiRPCTransport';
 
 class FakeKernel implements PiExecutionKernel {
   readonly requests: Array<{ payload: Record<string, unknown>; type: string }> = [];
@@ -229,9 +230,6 @@ function createHarness(
   const host = createHost();
   const kernels: FakeKernel[] = [];
   const responses = new Map<string, unknown>([
-    ['get_commands', {
-      commands: [{ description: 'Compact context', name: 'compact', source: 'runtime' }],
-    }],
     ['get_session_stats', {
       contextWindow: 200_000,
       inputTokens: 10,
@@ -248,15 +246,8 @@ function createHarness(
     ['set_thinking_level', {}],
     ['steer', { disposition: 'queued' }],
   ]);
-  const commandCatalog = {
-    getDropdownConfig: jest.fn(),
-    listDropdownEntries: jest.fn(async () => []),
-    refresh: jest.fn(async () => undefined),
-    setCommandSnapshot: jest.fn(),
-  };
   const backend = new PiExecutionBackend(
     host,
-    { commandCatalog },
     {
       createKernel: (spec, callbacks) => {
         const kernel = new FakeKernel(spec, callbacks, responses, requestHandler);
@@ -269,7 +260,6 @@ function createHarness(
   );
   return {
     backend,
-    commandCatalog,
     config,
     host,
     kernels,
@@ -292,7 +282,7 @@ describe('PiExecutionBackend', () => {
           mediaType: 'image/png', size: 5, source: 'paste',
         } }],
         context: { ...capturedSelections, linkedContent: { path: 'note.md' },
-          sessionReferences: [{ id: 'ref', title: 'Review', providerId: 'pi', updatedAt: 'updated', snapshotPath: '/tmp/ref.md' }],
+          sessionReferences: [{ id: 'ref', title: 'Review', providerId: 'pi', updatedAt: 'updated' }],
         },
       })).events);
       expect(kernels[0].requests.filter(request => request.type === 'compact' || request.type === 'prompt'))
@@ -731,9 +721,6 @@ describe('PiExecutionBackend', () => {
       status: 'idle',
     });
     expect(harness.session.getSnapshot().providerStateDeletes).toBeUndefined();
-    expect(harness.commandCatalog.setCommandSnapshot).toHaveBeenCalledWith([
-      expect.objectContaining({ id: 'pi:runtime:compact', name: 'compact' }),
-    ]);
     expect(new Set(events.map(event => event.scope.sequence)).size).toBe(events.length);
   });
 
@@ -994,6 +981,13 @@ describe('PiExecutionBackend', () => {
     expect(events).not.toContainEqual(expect.objectContaining({
       type: 'turn_completed',
     }));
+    const retry = collect(harness.session.execute(createRequest()).events);
+    await waitFor(() => getPromptMessages(kernel).length === 2);
+    completeTurn(kernel);
+    expect((await retry).at(-1)).toMatchObject({ type: 'turn_completed' });
+    expect(harness.kernels).toHaveLength(1);
+    expect(kernel.shutdown).not.toHaveBeenCalled();
+    await harness.session.dispose();
   });
 
   it('preserves a pending native Pi error when the process exits before agent end', async () => {
@@ -1085,8 +1079,8 @@ describe('PiExecutionBackend', () => {
     },
     {
       text: '/skill:review',
-      context: { sessionReferences: [{ id: 'ref', title: 'Review', providerId: 'pi', updatedAt: 'updated', snapshotPath: '/tmp/ref.md' }] },
-      expected: '/skill:review \n\n<context_sessions>\n<context_session title="Review" id="ref" provider="pi" updated="updated" path="/tmp/ref.md" />\n</context_sessions>',
+      context: { sessionReferences: [{ id: 'ref', title: 'Review', providerId: 'pi', updatedAt: 'updated' }] },
+      expected: '/skill:review \n\n<context_sessions>\n<context_session title="Review" id="ref" provider="pi" updated="updated" />\n</context_sessions>',
     },
     {
       text: '/skill:review task', context: { linkedContent: { path: 'note.md' } },
@@ -1126,7 +1120,7 @@ describe('PiExecutionBackend', () => {
   it('encodes path-only Linked content without changing the Vault-root process CWD', async () => {
     const harness = createHarness();
     const run = harness.session.execute(createRequest({
-      context: { ...capturedSelections, sessionReferences: [{ id: 'conv-1-ref', title: 'Review', providerId: 'codex', updatedAt: 'updated', snapshotPath: '/tmp/claudian-sessions/ref.md' }], linkedContent: { path: 'Projects/Research' } },
+      context: { ...capturedSelections, sessionReferences: [{ id: 'conv-1-ref', title: 'Review', providerId: 'codex', updatedAt: 'updated' }], linkedContent: { path: 'Projects/Research' } },
       input: [{ text: 'Inspect linked content', type: 'text' }],
     }));
     const eventsPromise = collect(run.events);
@@ -1136,7 +1130,7 @@ describe('PiExecutionBackend', () => {
 
     expect(harness.kernels[0].launchSpec.cwd).toBe('/vault');
     expect(getPromptMessages(harness.kernels[0])).toEqual([
-      'Inspect linked content\n\n<linked_content path="Projects/Research" />\n\n' + capturedSelectionPrompt + '\n\n<context_sessions>\n<context_session title="Review" id="conv-1-ref" provider="codex" updated="updated" path="/tmp/claudian-sessions/ref.md" />\n</context_sessions>',
+      'Inspect linked content\n\n<linked_content path="Projects/Research" />\n\n' + capturedSelectionPrompt + '\n\n<context_sessions>\n<context_session title="Review" id="conv-1-ref" provider="codex" updated="updated" />\n</context_sessions>',
     ]);
     expect(getPromptMessages(harness.kernels[0])[0]).not.toMatch(
       /<(?:linked_note|current_note)\b/,
@@ -1446,6 +1440,7 @@ describe('PiExecutionBackend', () => {
     });
     expect(conversation.sessionId).toBeNull();
     expect(conversation.providerState).toEqual({
+      bindingRetired: true,
       futureResumeCursor: { token: 'keep-me' },
       previousSessions: [{
         sessionFile: missingSessionFile,
@@ -1749,7 +1744,7 @@ describe('PiExecutionBackend', () => {
     const requestHandler = async <T>(type: string): Promise<T> => {
       if (type === failureType && rejectRequest) {
         rejectRequest = false;
-        throw new Error(`${failureType} failed`);
+        throw new PiRPCResponseError(type, `${failureType} failed`);
       }
       const responses: Record<string, unknown> = {
         get_commands: { commands: [] },
@@ -1799,6 +1794,63 @@ describe('PiExecutionBackend', () => {
     expect(getPromptMessages(harness.kernels[0]).at(-1)).toEqual(
       expect.stringContaining('pre-handoff question'),
     );
+  });
+
+  it.each([false, true])('fences an ambiguous prompt failure before retrying (native run started: %s)', async started => {
+    const prompt = createRejectableDeferred<unknown>();
+    const shutdown = createDeferred();
+    let promptCount = 0;
+    const harness: ReturnType<typeof createHarness> = createHarness(createConfig(), (kernel, index) => {
+      if (index === 0) kernel.shutdown.mockImplementation(() => shutdown.promise);
+    }, async <T>(type: string): Promise<T> => {
+      if (type === 'prompt' && promptCount++ === 0) return await prompt.promise as T;
+      return harness.responses.get(type) as T;
+    });
+    const first = collect(harness.session.execute(createRequest()).events);
+    let retry: ProviderExecutionRun | undefined;
+    let retryConsumption: Promise<void> | undefined;
+    try {
+      await waitFor(() => promptCount === 1);
+      const oldKernel = harness.kernels[0];
+      oldKernel.stderr = 'Pi extension is still processing the request';
+      if (started) oldKernel.emit({ type: 'agent_start' });
+      prompt.reject(new Error('Request timeout: prompt (30000ms)'));
+      expect((await first).at(-1)).toMatchObject({
+        type: 'execution_error',
+        message: expect.stringContaining(oldKernel.stderr),
+      });
+
+      const retryEvents: ProviderExecutionEvent[] = [];
+      retry = harness.session.execute(createRequest({ input: [{ type: 'text', text: 'Retry' }] }));
+      retryConsumption = (async () => {
+        for await (const event of retry!.events) retryEvents.push(event);
+      })();
+      await flush();
+      oldKernel.emit({ type: 'message_update', assistantMessageEvent: { type: 'text_delta', delta: 'Late first answer' } });
+      completeTurn(oldKernel);
+      await flush();
+      expect(retryEvents).not.toContainEqual(expect.objectContaining({ type: 'text_delta', text: 'Late first answer' }));
+      expect(retryEvents).not.toContainEqual(expect.objectContaining({ type: 'turn_completed' }));
+      expect(oldKernel.shutdown).toHaveBeenCalledTimes(1);
+      expect(getPromptMessages(oldKernel)).toHaveLength(1);
+      expect(harness.kernels).toHaveLength(1);
+
+      shutdown.resolve();
+      await waitFor(() => harness.kernels[1]?.requests.some(request => request.type === 'prompt') ?? false);
+      const replacement = harness.kernels[1];
+      replacement.emit({ type: 'message_update', assistantMessageEvent: { type: 'text_delta', delta: 'Retry answer' } });
+      completeTurn(replacement);
+      await retryConsumption;
+      expect(retryEvents.filter(event => event.type === 'text_delta')).toEqual([
+        expect.objectContaining({ text: 'Retry answer' }),
+      ]);
+      expect(retryEvents.at(-1)).toMatchObject({ type: 'turn_completed' });
+    } finally {
+      shutdown.resolve();
+      retry?.cancel();
+      await retryConsumption;
+      await harness.session.dispose();
+    }
   });
 
   it.each([
@@ -2013,6 +2065,23 @@ describe('PiExecutionBackend', () => {
     const events = await collect(harness.session.execute(createRequest()).events);
     expect(events).toContainEqual(expect.objectContaining({ type: 'execution_error', category: 'configuration' }));
     expect(events.some(event => event.type === 'turn_started' && event.accepted)).toBe(false);
+    expect(harness.kernels[0].requests.some(request => request.type === 'prompt')).toBe(false);
+    await harness.session.dispose();
+  });
+
+  it('reports a saved model the current Pi environment rejects as an actionable configuration error', async () => {
+    const harness = createHarness(createConfig(), undefined, async <T>(type: string): Promise<T> => {
+      if (type === 'set_model') {
+        throw new PiRPCResponseError(type, 'Model not found: anthropic/claude-sonnet-4');
+      }
+      return harness.responses.get(type) as T;
+    });
+    const events = await collect(harness.session.execute(createRequest()).events);
+    expect(events.at(-1)).toMatchObject({
+      category: 'configuration',
+      message: expect.stringMatching(/anthropic\/claude-sonnet-4[\s\S]*Model not found[\s\S]*click Discover/),
+      type: 'execution_error',
+    });
     expect(harness.kernels[0].requests.some(request => request.type === 'prompt')).toBe(false);
     await harness.session.dispose();
   });
@@ -3131,7 +3200,7 @@ describe('PiExecutionBackend', () => {
       await harness.session.dispose();
     });
 
-    it('aborts a background turn on Stop and completes it when Pi settles without restarting Pi', async () => {
+    it('aborts a background turn on Stop and completes it as interrupted when Pi settles without restarting Pi', async () => {
       const harness = createHarness();
       const { events, kernel } = await startIdleSession(harness);
       emitWake(kernel);
@@ -3139,11 +3208,13 @@ describe('PiExecutionBackend', () => {
       harness.session.cancel();
       expect(kernel.sent).toContainEqual({ type: 'abort' });
       expect(harness.session.getStatus()).toBe('cancelling');
+      // Pi persists the stopped reply as `stopReason: aborted`, which history replays as interrupted.
+      kernel.emit({ type: 'message_end', message: { role: 'assistant', content: [], stopReason: 'aborted', errorMessage: 'Operation aborted' } });
       kernel.emit({ type: 'agent_end' });
       kernel.emit({ type: 'agent_settled' });
       await waitFor(() => events.some(event => event.type === 'background_turn_completed'));
 
-      expect(backgroundEvents(events).at(-1)).toMatchObject({ reason: 'provider-ended', type: 'background_turn_completed' });
+      expect(backgroundEvents(events).at(-1)).toMatchObject({ reason: 'interrupted', type: 'background_turn_completed' });
       expect(harness.session.getStatus()).toBe('idle');
       expect(kernel.shutdown).not.toHaveBeenCalled();
       await harness.session.dispose();

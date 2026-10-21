@@ -59,7 +59,7 @@ export class LinkedContentSelector {
     setIcon(iconEl, 'link');
     const prefixEl = this.selectorRow.createSpan({
       cls: 'claudian-linked-content-selector-prefix',
-      text: t('chat.linkedContent.prefix'),
+      text: t('chat.linkedContent.label'),
     });
     prefixEl.setAttribute('id', this.prefixId);
     this.selectorButton = this.selectorRow.createEl('button', {

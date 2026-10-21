@@ -37,7 +37,7 @@ export class LinkedContentPickerSource {
         kind: 'none',
         path: null,
         label: t('common.none'),
-        detail: t('chat.linkedContent.none'),
+        detail: t('chat.linkedContent.noContent'),
         icon: 'circle-slash',
       },
     ];

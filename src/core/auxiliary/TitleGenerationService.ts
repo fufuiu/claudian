@@ -1,3 +1,5 @@
+import { t } from '@/i18n/i18n';
+
 import {
   buildTitleGenerationPrompt,
   buildTitleGenerationSystemPrompt,
@@ -63,7 +65,7 @@ export class TitleGenerationService implements TitleGenerationServiceContract {
     } catch (error) {
       await this.#safeCallback(callback, conversationId, {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : t('common.unknownError'),
       });
     } finally {
       await controller.dispose();

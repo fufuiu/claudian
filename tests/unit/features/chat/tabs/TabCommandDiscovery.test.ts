@@ -40,7 +40,6 @@ function createRuntimeCatalog(): RuntimeCommandCatalog {
       isEditable: false, isDeletable: false, displayPrefix: '/', insertPrefix: '/',
     }),
   });
-  jest.spyOn(catalog, 'setCommandSnapshot');
   return catalog;
 }
 
@@ -216,8 +215,6 @@ describe('TabCommandDiscovery', () => {
       getConversationById,
     }));
     const tab = await manager.createTab('conversation-a');
-    const conversationChanged = runtimeOptions(0)
-      .onConversationIdChanged as (runtime: any, conversationId: string) => void;
 
     const staleDiscovery = reloadDiscovery(0, tab);
     for (let attempt = 0;
@@ -225,7 +222,7 @@ describe('TabCommandDiscovery', () => {
       attempt += 1) {
       await Promise.resolve();
     }
-    conversationChanged(tab, 'conversation-b');
+    await manager.openConversation('conversation-b');
     firstLookup.resolve({
       id: 'conversation-a',
       messages: [{ role: 'user', content: 'A' }],
@@ -236,7 +233,7 @@ describe('TabCommandDiscovery', () => {
     await expect(staleDiscovery).resolves.toMatchObject({ status: 'error', retryable: true });
     expect(commandLoader.loadCommands).not.toHaveBeenCalled();
 
-    await expect(reloadDiscovery(0, tab)).resolves.toMatchObject({
+    await expect(reloadDiscovery(1, manager.getActiveTab())).resolves.toMatchObject({
       status: 'ready', items: [{ name: 'review' }],
     });
     expect(commandLoader.loadCommands).toHaveBeenCalledWith(expect.objectContaining({
@@ -290,7 +287,6 @@ describe('TabCommandDiscovery', () => {
     await expect(oldLoad).resolves.toMatchObject({
       status: 'ready', items: [{ description: 'Old command', name: 'old' }],
     });
-    expect(catalog.setCommandSnapshot).not.toHaveBeenCalled();
 
     commandLoader.loadCommands.mockResolvedValueOnce({
       status: 'ready',
@@ -300,9 +296,6 @@ describe('TabCommandDiscovery', () => {
       status: 'ready', items: [{ description: 'Fresh command', name: 'fresh' }],
     });
     expect(commandLoader.loadCommands).toHaveBeenCalledTimes(2);
-    expect(catalog.setCommandSnapshot).toHaveBeenCalledWith([
-      { description: 'Fresh command', name: 'fresh' },
-    ]);
     await executionLifecycleRegistry.dispose();
   });
 

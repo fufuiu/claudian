@@ -13,7 +13,6 @@ import {
   type ProviderSessionConfig,
   type ProviderSessionEvent,
 } from '@/core/execution';
-import type { SlashCommand } from '@/core/types';
 
 const mockProcessStart = jest.fn();
 const mockProcessShutdown = jest.fn();
@@ -63,8 +62,8 @@ jest.mock('@/providers/opencode/runtime/OpencodeLaunchArtifacts', () => {
   };
 });
 
+import { decodeRecoveryPrompt } from '@/core/prompt/recoveryPrompt';
 import type { ACPSessionUpdate } from '@/providers/acp';
-import type { OpencodeCommandCatalog } from '@/providers/opencode/commands/OpencodeCommandCatalog';
 import {
   type OpencodeACPSessionKernel,
   type OpencodeACPSessionKernelOptions,
@@ -293,11 +292,7 @@ async function waitForCondition(condition: () => boolean): Promise<void> {
 
 function createHarness(config = createConfig()) {
   const kernels: FakeKernel[] = [];
-  const commandCatalog = {
-    setCommandSnapshot: jest.fn(),
-  } as unknown as OpencodeCommandCatalog;
   const backend = new OpencodeExecutionBackend(plugin, {
-    commandCatalog,
     serverService: new OpencodeServerService(),
     createKernel: (options) => {
       const kernel = new FakeKernel(options);
@@ -306,7 +301,7 @@ function createHarness(config = createConfig()) {
     },
   });
   const session = backend.createSession(config);
-  return { backend, commandCatalog, kernels, session };
+  return { backend, kernels, session };
 }
 
 describe('OpencodeExecutionBackend', () => {
@@ -589,7 +584,7 @@ describe('OpencodeExecutionBackend', () => {
   it('encodes path-only Linked content without changing the Vault-root kernel CWD', async () => {
     const harness = createHarness();
     const run = harness.session.execute(createRequest({
-      context: { ...capturedSelections, sessionReferences: [{ id: 'conv-1-ref', title: 'Review', providerId: 'codex', updatedAt: 'updated', snapshotPath: '/tmp/claudian-sessions/ref.md' }], linkedContent: { path: 'Projects/Research' } },
+      context: { ...capturedSelections, sessionReferences: [{ id: 'conv-1-ref', title: 'Review', providerId: 'codex', updatedAt: 'updated' }], linkedContent: { path: 'Projects/Research' } },
       input: [{ text: 'Inspect linked content', type: 'text' }],
     }));
     await waitForPrompt(harness.kernels[0]);
@@ -599,7 +594,7 @@ describe('OpencodeExecutionBackend', () => {
     expect(harness.kernels[0].options.config.vaultWorkingDirectory).toBe('/vault');
     expect(harness.kernels[0].prompts[0]).toEqual({
       prompt: [{
-        text: 'Inspect linked content\n\n<linked_content path="Projects/Research" />\n\n' + capturedSelectionPrompt + '\n\n<context_sessions>\n<context_session title="Review" id="conv-1-ref" provider="codex" updated="updated" path="/tmp/claudian-sessions/ref.md" />\n</context_sessions>',
+        text: 'Inspect linked content\n\n<linked_content path="Projects/Research" />\n\n' + capturedSelectionPrompt + '\n\n<context_sessions>\n<context_session title="Review" id="conv-1-ref" provider="codex" updated="updated" />\n</context_sessions>',
         type: 'text',
       }],
       sessionId: 'native-session',
@@ -609,8 +604,11 @@ describe('OpencodeExecutionBackend', () => {
     );
   });
 
-  it('bootstraps canonical history when no native session exists', async () => {
-    const harness = createHarness();
+  it('bootstraps canonical history after invalidation while retaining retired sessions', async () => {
+    const previousSessions = [{ sessionId: 'retired-session', databasePath: '/old/opencode.db', nativeVersion: 1 }];
+    const harness = createHarness(createConfig({
+      resumeSeed: { providerState: { nativeConversationContextEstablished: false, previousSessions } },
+    }));
     const run = harness.session.execute(createRequest({
       conversationHistory: [
         { id: 'u1', role: 'user', content: 'prior', timestamp: 1 },
@@ -625,8 +623,14 @@ describe('OpencodeExecutionBackend', () => {
     harness.kernels[0].completePrompt();
     await collect(run.events);
 
-    expect(JSON.stringify(harness.kernels[0].prompts[0])).toContain('prior');
-    expect(JSON.stringify(harness.kernels[0].prompts[0])).toContain('answer');
+    expect(harness.kernels[0].openedResumeIds).toEqual([undefined]);
+    const { prompt: [block] } = harness.kernels[0].prompts[0] as { prompt: Array<{ text?: string }> };
+    expect(decodeRecoveryPrompt(block.text ?? '')).toEqual({ currentInput: 'hello' });
+    expect(block.text).toContain('User: prior\n\nAssistant: answer');
+    expect(harness.session.getSnapshot()).toMatchObject({
+      providerSessionId: 'native-session',
+      providerState: { nativeConversationContextEstablished: true, previousSessions },
+    });
   });
 
   it('does not replay canonical history into a resumed native session', async () => {
@@ -794,9 +798,6 @@ describe('OpencodeExecutionBackend', () => {
     kernel.completePrompt();
     const events = await collect(run.events);
 
-    expect(harness.commandCatalog.setCommandSnapshot).toHaveBeenCalledWith([
-      expect.objectContaining({ name: 'review' }),
-    ]);
     expect(events).toEqual(expect.arrayContaining([
       expect.objectContaining({ text: 'live-output', type: 'text_delta' }),
     ]));
@@ -1012,30 +1013,6 @@ describe('OpencodeExecutionBackend', () => {
       expect.objectContaining({ configId: 'mode', value: 'build' }),
     ]));
     expect(harness.kernels[0].autoApproveCalls).toEqual([autoApprove]);
-  });
-
-  it('publishes immutable command snapshots outside the execution-session API', async () => {
-    const harness = createHarness();
-    const run = harness.session.execute(createRequest());
-    await waitForPrompt(harness.kernels[0]);
-    const commands: SlashCommand[] = [
-      { id: 'acp:review', name: 'review', content: '' },
-    ];
-    harness.kernels[0].notify({
-      availableCommands: [{ name: 'review' }],
-      sessionUpdate: 'available_commands_update',
-    });
-    harness.kernels[0].completePrompt();
-    harness.kernels[0].notify({
-      content: { type: 'text', text: 'ok' },
-      sessionUpdate: 'agent_message_chunk',
-    });
-    await collect(run.events);
-
-    expect(harness.commandCatalog.setCommandSnapshot).toHaveBeenCalledWith([
-      expect.objectContaining(commands[0]),
-    ]);
-    expect('getSupportedCommands' in harness.session).toBe(false);
   });
 
   it('applies OpenCode tool presentation to live ACP events', async () => {

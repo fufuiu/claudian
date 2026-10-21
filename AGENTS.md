@@ -1,6 +1,6 @@
 # AGENTS.md
 
-## 本地汉化维护与交接（2026-10-07）
+## 本地汉化维护与交接（2026-10-07；最近更新 2026-10-22）
 
 这是用户自用的 Claudian 简体中文汉化源码仓库，与同级 `obsidian-git` 仓库
 一样在本地维护。以下为交接记录；接手时先检查实际 Git 和安装状态。
@@ -10,18 +10,39 @@
 - 本地维护分支：`zh-cn`，保留原来的 `main` 分支。
 - 官方远程：`origin` → `https://github.com/YishenTu/claudian.git`。
   不把它当成用户自己的 fork，不向官方仓库推送本地汉化。
-- 本次基于上游 `2.3.15`，基线提交为
-  `929ff4f5ad9bc1338ab975c5e10309d0480d3fe5`。
-- 汉化已完成并安装试用；**源码、对应测试及本交接文档尚未提交**，分支 HEAD
-  仍为上述基线。创建分支不等于已将汉化保存到提交历史。
-- 复用现有 i18n，补齐聊天、会话管理、设置、命令、权限确认、工具结果、
-  行内编辑、欢迎语、状态消息和无障碍标签。新安装默认 `zh-CN`；已保存的
-  语言选择保留。品牌、模型名称、用户内容及提供商返回的原始内容保留原文。
-- 上次验证使用 Node `24.16.0`：类型检查、lint、生产构建通过；7312 个 Jest
-  测试通过，2 个跳过；76 项脚本检查通过。性能检查通过，冷模块加载约
-  81.6 ms，超过 50 ms 提示线，未达到 150 ms 复核线。
+- 汉化历史：基于 `2.3.15`（`929ff4f5ad9bc1338ab975c5e10309d0480d3fe5`）的完整
+  汉化已提交为 `ad123ef8`（"zh-cn: 保存基于 2.3.15 的完整汉化"，
+  138 个文件 +7988/-844）。2026-10-22 合并官方发布标签 `2.3.27`
+  （`96854b448b6af39a19d42b5a97093efb6c57c3be`，tag 对象指向该提交），当前
+  基线即 `2.3.27`；未合并更新的 `origin/main` tip（按交接规范只合并正式
+  发布标签）。
+- 合并 `2.3.27` 的冲突处理：87 个冲突文件（84 修改 + 3 个上游删除文件，
+  后者确认为上游真实删除，随 `git rm` 结束）。10 个语言包 JSON 按 key 做
+  并集合并（上游新增 192 个 key、本地新增 569 个 key 全部保留，上游删除
+  2 个 fork 相关 key）。其余 TS 冲突以官方 2.3.27 版本为基线重放汉化
+  改动；上游已把大量字面量迁移到自带翻译的新 i18n key（如
+  `chat.tools.status.*`、`chat.web.*`、`chat.approval.*`），直接采用；
+  上游仍未本地化的字面量（如 SideChatController 源会话变更报错、
+  EffortSelector/ModelSelector、DeepSeek 权限模式等约 59 处）重新用
+  `t()` 包裹并复用或补充 key。
+- 本次补译与修正：上游新增 key 的简体中文翻译由上游自带，本地仅修正
+  `chat.permissionMode.claude.yolo`（"YOLO 模式"）、`chat.linkedContent.missing`
+  （"内容缺失"，旧值带未传的 `{path}` 占位符）；新增 `chat.sessions.unread`、
+  `chat.subagents.initializing`、`chat.tools.statusLabel`、
+  `inlineEdit.lineSingular/linePlural`、`chat.sessions.markUnread/markRead/
+  copySessionId`、`chat.errors.copySessionId` 及名词单位 key（如
+  `chat.composer.nodeSingular`）等；术语统一"智能体/答案"；
+  `chat.tools.changes` 等含 `{unit}` 参数的 key 为满足上游新增的
+  locales 参数一致性测试改为名词单位插值，英文断言相应从
+  "1 session that is running" 调整为 "1 session running"。
+- 2026-10-22 验证（Node `v26.9.0`，比 `.node-version` 的 `24.16.0` 新，
+  engines 范围外告警不影响结果）：类型检查、lint、生产构建通过；
+  `npm test` 全绿（jest 8855 通过 / 5 跳过 / 0 失败，node:test 86 通过，
+  测试总数从 7312 增至 8860）；性能检查通过，冷模块加载中位
+  98.9 ms，超过 50 ms 提示线，未达复核线。
 - 已通过 Obsidian CLI 重载并打开真实聊天面板，确认输入提示、推理强度、
-  权限选项和命令菜单显示中文；用户正在试用。
+  权限选项和命令菜单显示中文；用户正在试用（2.3.15 时确认，2.3.27 合并
+  后尚未重新安装试用，部署前按下方"Personal OS 试用安装"流程备份）。
 
 ### 后续汉化与上游同步
 

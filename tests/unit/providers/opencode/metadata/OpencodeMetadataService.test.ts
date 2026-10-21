@@ -74,7 +74,7 @@ describe('OpencodeMetadataService', () => {
     const create = jest.fn(() => probe);
     const service = new OpencodeMetadataService(plugin, { createProbe: create });
     try {
-      await expect(service.discoverModels()).resolves.toBe(true);
+      await expect(service.discoverModels()).resolves.toEqual({ changed: true });
       expect(create).toHaveBeenCalledTimes(1);
       expect(jest.mocked(probe.warmModel).mock.calls.map(([id]) => id)).toEqual(['a/one', 'b/two']);
       expect(getOpencodeProviderSettings(plugin.settings).thinkingOptionsByModel['b/two']).toEqual([]);
@@ -82,12 +82,10 @@ describe('OpencodeMetadataService', () => {
     } finally { await service.dispose(); }
   });
 
-  it('uses an isolated probe, publishes commands, and persists discovered models', async () => {
+  it('uses an isolated probe, loads commands, and persists discovered models', async () => {
     const plugin = createPlugin();
     const probe = createProbe();
-    const commandCatalog = { setCommandSnapshot: jest.fn() };
     const service = new OpencodeMetadataService(plugin, {
-      commandCatalog,
       createProbe: jest.fn(() => probe),
     });
 
@@ -99,7 +97,6 @@ describe('OpencodeMetadataService', () => {
     expect(getOpencodeProviderSettings(plugin.settings).discoveredModels).toEqual([
       { label: 'Claude', rawId: 'anthropic/claude' },
     ]);
-    expect(commandCatalog.setCommandSnapshot).toHaveBeenCalled();
     expect(probe.dispose).toHaveBeenCalledTimes(2);
   });
 
@@ -141,9 +138,7 @@ describe('OpencodeMetadataService', () => {
         rejectLoad = reject;
       })),
     });
-    const commandCatalog = { setCommandSnapshot: jest.fn() };
     const service = new OpencodeMetadataService(transitionPlugin, {
-      commandCatalog,
       createProbe: () => probe,
     });
     const load = service.loadCatalog();
@@ -161,7 +156,6 @@ describe('OpencodeMetadataService', () => {
       afterTransition: expect.any(Function),
       beforeTransition: expect.any(Function),
     });
-    expect(commandCatalog.setCommandSnapshot).toHaveBeenCalledWith([]);
     expect(probe.dispose).toHaveBeenCalledTimes(1);
 
     await service.dispose();
@@ -187,15 +181,12 @@ describe('OpencodeMetadataService', () => {
       probeEnvironments.push(environment);
       return createProbe();
     });
-    const commandCatalog = { setCommandSnapshot: jest.fn() };
     const service = new OpencodeMetadataService(transitionPlugin, {
-      commandCatalog,
       createProbe: createProbeFactory,
     });
 
     await beforeTransition();
     transitionPlugin.mutateSettingsConditionally.mockClear();
-    commandCatalog.setCommandSnapshot.mockClear();
     const catalog = service.loadCatalog();
     const commands = service.discoverCommands();
     const warm = service.warmModelMetadata('opencode:anthropic/claude');
@@ -205,14 +196,13 @@ describe('OpencodeMetadataService', () => {
 
     expect(createProbeFactory).not.toHaveBeenCalled();
     expect(transitionPlugin.mutateSettingsConditionally).not.toHaveBeenCalled();
-    expect(commandCatalog.setCommandSnapshot).not.toHaveBeenCalled();
 
     environment = 'environment-b';
     await afterTransition();
     await expect(Promise.all([catalog, commands, warm, discovery, batch])).resolves.toEqual([
       true,
       expect.objectContaining({ loaded: true }),
-      true, true, true,
+      true, { changed: true }, true,
     ]);
     expect(probeEnvironments).toEqual([
       'environment-b', 'environment-b', 'environment-b',
@@ -288,7 +278,7 @@ it.each(['catalog', 'warm', 'discovery', 'batch'] as const)('does not publish ca
   await waiting;
   controller.abort();
   release();
-  await expect(pending).resolves.toBe(false);
+  expect(await pending).toEqual(kind === 'discovery' ? { changed: false } : false);
   expect(getOpencodeProviderSettings(host.settings).discoveredModels).toEqual([]);
   expect(getOpencodeProviderSettings(host.settings).thinkingOptionsByModel).toEqual({});
   expect(host.notifyProviderChatOptionsChanged).not.toHaveBeenCalled();

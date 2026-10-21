@@ -37,6 +37,18 @@ const nativeOptions = {
 };
 
 describe('ClaudeExecutionInteractionRouter', () => {
+  it('auto-allows Claudian session tools before ordinary policy and interaction routing', async () => {
+    const port = createPort();
+    const handler = new ClaudeExecutionInteractionRouter({
+      interactionPort: port, sessionInstanceId: 'session', getTurnId: () => null,
+      isToolAllowed: () => false, onToolBlocked: jest.fn(),
+    }).canUseTool;
+    const input = { text: 'Hello' };
+    expect(await handler('mcp__claudian_sessions__claudian_send_message', input, nativeOptions))
+      .toEqual({ behavior: 'allow', updatedInput: input });
+    expect(port.requestApproval).not.toHaveBeenCalled();
+  });
+
   it('allows only the current invocation for an allow-once decision', async () => {
     const port = createPort();
     port.requestApproval.mockImplementation(async (request) => ({
@@ -64,7 +76,7 @@ describe('ClaudeExecutionInteractionRouter', () => {
     });
   });
 
-  it('returns provider suggestions unchanged for an always-allow decision', async () => {
+  it.each([undefined, false])('returns provider suggestions unchanged when suppression is %s', async (suppressAlwaysAllowRule) => {
     const port = createPort();
     const handler = createHandler(port);
     const input = { command: 'git status' };
@@ -85,6 +97,7 @@ describe('ClaudeExecutionInteractionRouter', () => {
     const result = await handler('Bash', input, {
       ...nativeOptions,
       suggestions,
+      suppressAlwaysAllowRule,
     });
 
     expect(port.requestApproval).toHaveBeenCalledWith(
@@ -116,19 +129,37 @@ describe('ClaudeExecutionInteractionRouter', () => {
   });
 
   it.each([
-    ['absent', undefined],
-    ['empty', []],
-  ])('offers no always-allow decision when provider suggestions are %s', async (_label, suggestions) => {
+    { label: 'absent', suggestions: undefined, suppressAlwaysAllowRule: undefined },
+    { label: 'empty', suggestions: [], suppressAlwaysAllowRule: false },
+    {
+      label: 'suppressed',
+      suggestions: [{
+        type: 'addRules' as const,
+        behavior: 'allow' as const,
+        rules: [{ toolName: 'mcp__connector__write' }],
+        destination: 'session' as const,
+      }],
+      suppressAlwaysAllowRule: true,
+    },
+  ])('limits approval to this invocation when suggestions are $label', async ({ suggestions, suppressAlwaysAllowRule }) => {
     const port = createPort();
     const handler = createHandler(port);
+    const input = { content: 'note' };
 
-    await handler('Bash', { command: 'git status' }, {
+    const result = await handler('mcp__connector__write', input, {
       ...nativeOptions,
       suggestions,
+      suppressAlwaysAllowRule,
     });
 
     const request = port.requestApproval.mock.calls[0][0];
     expect(request.decisionOptions?.map(option => option.decision)).toEqual(['deny', 'allow']);
+    // The port deliberately returns allow-always even though that choice was not offered.
+    expect(result).toEqual({
+      behavior: 'allow',
+      updatedInput: input,
+      decisionClassification: 'user_temporary',
+    });
   });
 
   it('routes approvals with stable native/local identity and dismisses the exact interaction', async () => {

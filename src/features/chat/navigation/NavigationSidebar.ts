@@ -37,12 +37,12 @@ export class NavigationSidebar {
 
     try {
       // Create buttons
-      this.topBtn = this.#createButton('claudian-nav-btn-top', 'chevrons-up', t('chat.navigation.top'));
-      this.prevBtn = this.#createButton('claudian-nav-btn-prev', 'chevron-up', t('chat.navigation.previous'));
+      this.topBtn = this.#createButton('claudian-nav-btn-top', 'chevrons-up', t('chat.navigation.scrollToTop'));
+      this.prevBtn = this.#createButton('claudian-nav-btn-prev', 'chevron-up', t('chat.navigation.previousMessage'));
       this.tocBtn = this.#createButton('claudian-nav-btn-toc', 'list-tree', t('chat.navigation.directory'));
       this.tocBtn.setAttribute('aria-expanded', 'false');
-      this.nextBtn = this.#createButton('claudian-nav-btn-next', 'chevron-down', t('chat.navigation.next'));
-      this.bottomBtn = this.#createButton('claudian-nav-btn-bottom', 'chevrons-down', t('chat.navigation.bottom'));
+      this.nextBtn = this.#createButton('claudian-nav-btn-next', 'chevron-down', t('chat.navigation.nextMessage'));
+      this.bottomBtn = this.#createButton('claudian-nav-btn-bottom', 'chevrons-down', t('chat.navigation.scrollToBottom'));
 
       this.#setupEventListeners();
       this.#applyVisibility();
@@ -209,7 +209,7 @@ export class NavigationSidebar {
     if (entries.length === 0) {
       listEl.createDiv({
         cls: 'claudian-nav-toc-empty',
-        text: t('chat.navigation.empty'),
+        text: t('chat.navigation.emptyDirectory'),
       });
       return;
     }

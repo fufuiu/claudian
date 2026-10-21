@@ -26,7 +26,6 @@ import {
 } from '@/providers/acp';
 
 import { ProviderModelUnavailableError } from '../../../core/providers/models/ProviderModelUnavailableError';
-import type { OpencodeCommandCatalog } from '../commands/OpencodeCommandCatalog';
 import { loadOpencodeTurnStats } from '../history/OpencodeTurnStats';
 import type { OpencodeServerService } from '../http/OpencodeServerService';
 import { projectOpencodeMetadata } from '../metadata/OpencodeMetadataProjection';
@@ -52,7 +51,6 @@ export type OpencodeACPSessionKernelFactory = (
 ) => OpencodeSessionKernel;
 
 export interface OpencodeExecutionSessionOptions {
-  readonly commandCatalog?: Pick<OpencodeCommandCatalog, 'setCommandSnapshot'>;
   readonly serverService: OpencodeServerService;
   readonly createKernel?: OpencodeACPSessionKernelFactory;
 }
@@ -171,6 +169,11 @@ export class OpencodeExecutionSession implements ProviderExecutionSession, Steer
     if (this.disposed || (!this.backgroundTurn && this.backgroundScopes.size === 0)) return;
     this.lifecycleGeneration += 1;
     this.#interruptKernel();
+    if (this.backgroundTurn) {
+      // The native interrupt records the turn's `idle` outcome as interrupted, which history replays.
+      this.#emitBackground({ type: 'background_turn_completed', reason: 'interrupted', providerSessionId: this.nativeSessionId ?? undefined });
+      this.backgroundTurn = null;
+    }
     this.#invalidate('cancelled', true, new Error('Cancelled'));
     this.#emitSessionSnapshot();
     void this.#disposeKernel();
@@ -400,7 +403,7 @@ export class OpencodeExecutionSession implements ProviderExecutionSession, Steer
       const response = await kernel.prompt({
         prompt: prompt?.blocks ?? [{ type: 'text', text: text.trim() }],
         sessionId: native.sessionId,
-      }, prompt?.userText);
+      }, prompt?.userText, request);
       this.#markNativeConversationContextEstablished(active);
       if (!this.#isRunCurrent(active, generation)) return;
       active.nativeCompleted = response.stopReason !== 'cancelled';
@@ -506,12 +509,6 @@ export class OpencodeExecutionSession implements ProviderExecutionSession, Steer
       metadata = active.turn.handleUpdate(notification.update);
     } catch {
       return;
-    }
-    if (metadata?.type === 'commands' && !this.kernelMetadataController.signal.aborted) {
-      const commands = metadata.commands.map((command) => ({
-        ...command,
-      }));
-      this.options.commandCatalog?.setCommandSnapshot(commands);
     }
     if (metadata?.type === 'config_options') {
       if (this.nativeInfo) {

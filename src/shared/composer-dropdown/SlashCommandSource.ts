@@ -95,7 +95,7 @@ export class SlashCommandSource implements ComposerDropdownSource {
     if (result && result.status !== 'ready' && result.status !== 'empty') {
       const label = result.status === 'requires-session' || result.status === 'error'
         ? result.message
-        : t('suggestions.commandsLoading');
+        : t('chat.suggestions.providerLoading');
       const statusItems: ComposerDropdownItem[] = [
         ...items,
         {
@@ -107,7 +107,7 @@ export class SlashCommandSource implements ComposerDropdownSource {
       ];
       if (result.status === 'error' && result.retryable) {
         statusItems.push({
-          detail: t('suggestions.commandsRetry'),
+          detail: t('chat.suggestions.providerRetry'),
           icon: 'refresh-cw',
           id: 'provider-retry',
           kind: 'value',
@@ -232,7 +232,7 @@ export class SlashCommandSource implements ComposerDropdownSource {
       for (const command of getBuiltInCommandsForDropdown(this.providerId ?? undefined)) {
         const key = command.name.toLocaleLowerCase();
         if (seen.has(key)) continue;
-        seen.add(key);
+        for (const name of [command.name, ...(command.aliases ?? [])]) seen.add(name.toLocaleLowerCase());
         items.push({
           aliases: command.aliases,
           detail: command.argumentHint

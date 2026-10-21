@@ -2,13 +2,10 @@ import type { App } from 'obsidian';
 
 import type { ConversationRepository } from '@/app/conversations/ConversationRepository';
 import type { ConversationService } from '@/app/conversations/ConversationService';
-import type { SessionSnapshotStore } from '@/app/conversations/SessionSnapshotStore';
 import type { ChatModelSelectionCoordinator } from '@/app/settings/ChatModelSelectionCoordinator';
 import type { EnvironmentSettingsService } from '@/app/settings/EnvironmentSettingsService';
 import type { SettingsCoordinator } from '@/app/settings/SettingsCoordinator';
-import type { TabWorkspaceMigrationCoordinator } from '@/app/storage/TabWorkspaceMigrationCoordinator';
 import type { SharedAppStorage } from '@/core/bootstrap/storage';
-import type { AppTabManagerState } from '@/core/bootstrap/tabManagerState';
 import { resolveConversationModel } from '@/core/providers/conversationModel';
 import type { ProviderHost } from '@/core/providers/ProviderHost';
 import type { ProviderId } from '@/core/providers/types';
@@ -20,13 +17,11 @@ import type {
   ConversationSummary,
   StoredChatModelSelection,
 } from '@/core/types';
-import type {
-  ChatFeatureHost,
-  ChatViewHost,
-  TabWorkspaceStateDeliveryRegistration,
-} from '@/features/chat/ChatFeatureHost';
+import type { ChatFeatureHost, ChatSessionRuntimes } from '@/features/chat/ChatFeatureHost';
 import type { ClaudianView } from '@/features/chat/ClaudianView';
 import type { ConversationLifecycle } from '@/features/chat/conversation/ConversationLifecycle';
+import type { SessionMessagingService, SessionToolBinding } from '@/features/chat/session-messaging/SessionMessagingService';
+import type { SessionRuntimePool } from '@/features/chat/sessions/SessionRuntimePool';
 import type { ZenModeSource } from '@/features/chat/zen/types';
 import type { ZenModeController } from '@/features/chat/zen/ZenModeController';
 import type { FeatureHost } from '@/features/FeatureHost';
@@ -47,11 +42,11 @@ export interface FeatureHostDomains {
 }
 
 export interface ChatFeatureHostDomains extends FeatureHostDomains {
+  readonly sessionRuntimes: SessionRuntimePool;
+  readonly sessionMessaging: SessionMessagingService;
   readonly conversations: ConversationService;
   readonly executionPersistence: ConversationRepository;
   readonly chatModelSelection: ChatModelSelectionCoordinator;
-  readonly sessionSnapshots: SessionSnapshotStore;
-  readonly tabWorkspaceMigration: TabWorkspaceMigrationCoordinator;
   readonly conversationLifecycle: ConversationLifecycle;
   readonly zenMode: Pick<ZenModeController, 'register'>;
 }
@@ -113,23 +108,21 @@ export class ClaudianFeatureHost implements FeatureHost {
 
 /** Chat capabilities: conversations, execution persistence, tab workspace state, and views. */
 export class ClaudianChatFeatureHost extends ClaudianFeatureHost implements ChatFeatureHost {
+  readonly sessionRuntimes: ChatSessionRuntimes;
   readonly chatModelSelection: ChatModelSelectionCoordinator;
   readonly executionPersistence: ConversationRepository;
   readonly conversationLifecycle: ConversationLifecycle;
 
   constructor(protected readonly domains: ChatFeatureHostDomains) {
     super(domains);
+    this.sessionRuntimes = domains.sessionRuntimes;
     this.chatModelSelection = domains.chatModelSelection;
     this.executionPersistence = domains.executionPersistence;
     this.conversationLifecycle = domains.conversationLifecycle;
   }
 
-  writeSessionSnapshot(conversationId: string, markdown: string): Promise<string> {
-    return this.domains.sessionSnapshots.write(conversationId, markdown);
-  }
-
-  getSessionSnapshotDirectory(): string {
-    return this.domains.sessionSnapshots.directory;
+  bindSessionTools(conversationId: string): SessionToolBinding {
+    return this.domains.sessionMessaging.bindSessionTools(conversationId);
   }
 
   createConversation(options?: {
@@ -162,6 +155,10 @@ export class ClaudianChatFeatureHost extends ClaudianFeatureHost implements Chat
 
   renameConversation(id: string, title: string): Promise<void> {
     return this.domains.conversations.renameConversation(id, title);
+  }
+
+  completeConversationTitleGeneration(id: string, expectedTitle: string, title: string | null): Promise<void> {
+    return this.domains.conversations.completeConversationTitleGeneration(id, expectedTitle, title);
   }
 
   setLinkedContentPinned(contentPath: string, isPinned: boolean): Promise<void> {
@@ -202,21 +199,6 @@ export class ClaudianChatFeatureHost extends ClaudianFeatureHost implements Chat
 
   ensureConversationMetadataLoaded(conversationIds: readonly string[]): Promise<void> {
     return this.domains.conversations.ensureConversationMetadataLoaded(conversationIds);
-  }
-
-  registerTabWorkspaceStateDelivery(
-    view: ChatViewHost,
-    hasViewScopedState: boolean,
-  ): TabWorkspaceStateDeliveryRegistration {
-    return this.domains.tabWorkspaceMigration.registerStateDelivery(view, hasViewScopedState);
-  }
-
-  claimLegacyTabManagerState(): Promise<AppTabManagerState | null> {
-    return this.domains.tabWorkspaceMigration.claimLegacyState();
-  }
-
-  completeLegacyTabManagerStateMigration(): Promise<void> {
-    return this.domains.tabWorkspaceMigration.completeMigration();
   }
 
   registerZenModeSource(source: ZenModeSource): () => void {

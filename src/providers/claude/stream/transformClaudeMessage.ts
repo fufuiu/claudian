@@ -8,6 +8,8 @@ import type {
   SDKTaskProgressMessage,
 } from '@anthropic-ai/claude-agent-sdk';
 
+import { t } from '@/i18n/i18n';
+
 import { extractToolResultContent } from '../../../core/tools/toolResultContent';
 import type { UsageInfo } from '../../../core/types';
 import {
@@ -63,7 +65,7 @@ function transformTaskNotification(message: SDKTaskNotificationMessage): ClaudeA
     providerSessionId: message.session_id,
     taskId: message.task_id,
     status,
-    result: summary || (status === 'completed' ? 'Background task completed.' : 'Background task failed.'),
+    result: summary || (status === 'completed' ? t('chat.subagents.completed') : t('chat.subagents.failed')),
     ...(message.tool_use_id ? { toolUseId: message.tool_use_id } : {}),
   };
 }
@@ -114,6 +116,21 @@ const ASSISTANT_ERROR_MESSAGES: Record<SDKAssistantMessageError, string> = {
 function describeAssistantError(error: SDKAssistantMessageError): string {
   // Unknown codes from a newer CLI stay visible rather than vanishing.
   return ASSISTANT_ERROR_MESSAGES[error] ?? error;
+}
+
+/**
+ * An inherited credential can make a separate CLI subscription fail only inside Claudian.
+ * The hint stays conditional: it does not read the environment or claim a subscription was detected.
+ */
+const AUTHENTICATION_CONFLICT_HINT =
+  'If the same CLI works with a subscription separately, an inherited ANTHROPIC_API_KEY or '
+  + 'ANTHROPIC_AUTH_TOKEN may be interfering. In Settings → Claudian → Providers → Claude Code → Environment → Custom variables '
+  + '(Claude only), add an empty assignment only for the conflicting credential you intend to disable, '
+  + 'such as ANTHROPIC_API_KEY= or ANTHROPIC_AUTH_TOKEN=.';
+
+function withAuthenticationConflictHint(error: SDKAssistantMessageError, diagnostic: string): string {
+  if (error !== 'authentication_failed') return diagnostic;
+  return `${diagnostic}\n\n${AUTHENTICATION_CONFLICT_HINT}`;
 }
 
 /**
@@ -437,7 +454,8 @@ function* transformAssistantMessage(
 
   if (message.error !== undefined) {
     const prose = errorCarrier ? extractClaudeTextContent(content).trim() : '';
-    yield { type: 'error', content: prose || describeAssistantError(message.error) };
+    const diagnostic = prose || describeAssistantError(message.error);
+    yield { type: 'error', content: withAuthenticationConflictHint(message.error, diagnostic) };
   }
 
   for (const block of content) {

@@ -29,14 +29,14 @@ export async function deliverAsyncQuestion(
   binding: QuestionDeliveryBinding,
   signal?: AbortSignal,
 ): Promise<void> {
-  const notSent = () => new Error(t('chat.errors.answerNotSent'));
+  const notSent = () => new Error(t('chat.questions.notSent'));
   const assertCurrent = () => {
     if (signal?.aborted || tool.questionStatus === 'expired') throw notSent();
     binding.assertCurrent();
   };
   assertCurrent();
   const reply = ProviderRegistry.formatQuestionReply(binding.providerId, tool, answers);
-  if (!reply) throw new Error(t('chat.questions.invalidReply'));
+  if (!reply) throw new Error(t('chat.questions.unsupportedReply'));
   const delivery = binding.prepare({
     ...reply,
     draftContent: Object.values(answers).map(answer => Array.isArray(answer) ? answer.join(', ') : answer).join('\n'),
@@ -47,7 +47,7 @@ export async function deliverAsyncQuestion(
       const result = await delivery.steer(onDelivery);
       if (result !== 'not-sent') {
         if (result === 'uncertain') {
-          new Notice(t('chat.errors.answerUncertain'));
+          new Notice(t('chat.questions.uncertainDelivery'));
         }
         resolve();
         return;

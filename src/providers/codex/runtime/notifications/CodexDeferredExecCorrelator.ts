@@ -1,5 +1,6 @@
 import * as path from 'path';
 
+import type { ToolProviderPayload } from '@/core/types';
 import {
   codexToolRequestsMatch,
   type DecodedCodexExecEnvelopeCall,
@@ -17,6 +18,7 @@ import { asRecord, firstString } from './codexNotificationValues';
 import type { CodexToolChunkSink, CodexToolLedger } from './CodexToolLedger';
 
 interface ExpectedCall {
+  providerPayload?: ToolProviderPayload;
   name: string;
   input: Record<string, unknown>;
   comparisonInput?: Record<string, unknown>;
@@ -149,6 +151,14 @@ export class CodexDeferredExecCorrelator {
     }
   }
 
+  /** Publish unresolved calls before later assistant content can overtake them. */
+  publishPending(completedOnly = false): void {
+    for (const deferredExec of this.#deferredCalls.values()) {
+      if (completedOnly && !deferredExec.hasRawOutput) continue;
+      this.#emitFallback(deferredExec, deferredExec.rawOutput, Boolean(deferredExec.hasRawOutput));
+    }
+  }
+
   /** Closes every deferred call at turn end, falling back to raw cards for unclaimed calls. */
   flush(terminalError: boolean): void {
     for (const deferredExec of this.#deferredCalls.values()) {
@@ -184,7 +194,7 @@ export class CodexDeferredExecCorrelator {
         // Native completion carries search sources and withheld command output;
         // script output closes those only when the turn ends.
         if (emitResult && !call.canonicalCompleted && call.canonicalItemId
-          && (turnEnded || (call.name !== 'WebSearch' && !deferredExec.withholdsRawOutput))) {
+          && (turnEnded || (this.options.streamRawExecCalls && call.name !== 'WebSearch' && !deferredExec.withholdsRawOutput))) {
           this.ledger.canonicalCompletedIds.add(call.canonicalItemId);
           this.sink.emit({ type: 'tool_result', id: call.canonicalItemId, ...resultFor(call) });
           call.canonicalCompleted = true;
@@ -195,10 +205,14 @@ export class CodexDeferredExecCorrelator {
         ? deferredExec.callId
         : `${deferredExec.callId}:${index + 1}`;
       if (!call.fallbackId) {
-        this.sink.emitToolUse({ type: 'tool_use', id: fallbackId, name: call.name, input: call.input });
-        if (this.options.streamRawExecCalls) call.fallbackId = fallbackId;
+        this.sink.emitToolUse({
+          type: 'tool_use', id: fallbackId, name: call.name, input: call.input,
+          ...(call.providerPayload ? { providerPayload: call.providerPayload } : {}),
+        });
+        call.fallbackId = fallbackId;
       }
-      if (emitResult) {
+      if (emitResult && !this.ledger.emittedResultIds.has(fallbackId)) {
+        this.ledger.emittedResultIds.add(fallbackId);
         this.sink.emit({ type: 'tool_result', id: fallbackId, ...resultFor(call) });
       }
     });
@@ -322,7 +336,7 @@ function semanticToolName(name: string): string {
 function projectRawSemanticToolCall(
   call: DecodedCodexExecEnvelopeCall,
   workingDirectory?: string,
-): Pick<ExpectedCall, 'name' | 'input' | 'comparisonInput'> {
+): Pick<ExpectedCall, 'name' | 'input' | 'comparisonInput' | 'providerPayload'> {
   const { name, input, rawName, rawInput } = call;
   if (rawName === 'update_plan') {
     const explanation = firstString(rawInput.explanation);
@@ -351,7 +365,7 @@ function projectRawSemanticToolCall(
       },
     };
   }
-  return { name: semanticToolName(name), input };
+  return { name: semanticToolName(name), input, ...(call.providerPayload ? { providerPayload: call.providerPayload } : {}) };
 }
 
 function toolInputsCompatible(
@@ -364,10 +378,18 @@ function toolInputsCompatible(
     const expectedChanges = extractRawPatchChanges(expected.patch, workingDirectory);
     const actualChanges = extractCanonicalFileChanges(actual.changes, workingDirectory);
     if (expectedChanges.length > 0 || actualChanges.length > 0) {
-      if (expectedChanges.some(change => change.kind === 'update' && !change.hasContext)) {
-        return false;
-      }
-      return stableValueKey(expectedChanges) === stableValueKey(actualChanges);
+      return expectedChanges.length === actualChanges.length && expectedChanges.every((expectedChange, index) => {
+        const actualChange = actualChanges[index];
+        if (expectedChange.path !== actualChange.path || expectedChange.kind !== actualChange.kind
+          || expectedChange.movePath !== actualChange.movePath) return false;
+        if (expectedChange.kind !== 'update') return stableValueKey(expectedChange.lines) === stableValueKey(actualChange.lines);
+        // Native update diffs can include more context than the requested patch.
+        // Require every edit and the supplied context; ambiguous concurrent calls
+        // are still rejected by the unique-candidate check in #claim.
+        const edits = (lines: string[]) => lines.filter(line => line.startsWith('+') || line.startsWith('-'));
+        if (stableValueKey(edits(expectedChange.lines)) !== stableValueKey(edits(actualChange.lines))) return false;
+        return expectedChange.lines.length > 0 && actualChange.lines.some((_, start) => expectedChange.lines.every((line, offset) => actualChange.lines[start + offset] === line));
+      });
     }
   }
 
@@ -381,7 +403,6 @@ interface ComparedFileChange {
   kind: string;
   movePath?: string;
   lines: string[];
-  hasContext: boolean;
 }
 
 function extractRawPatchChanges(
@@ -403,7 +424,6 @@ function extractRawPatchChanges(
         path: normalizeComparedFilePath(match[2], workingDirectory),
         kind: normalizeComparedChangeKind(match[1]),
         lines: [],
-        hasContext: false,
       };
       continue;
     }
@@ -412,20 +432,18 @@ function extractRawPatchChanges(
       current.movePath = normalizeComparedFilePath(moveMatch[1], workingDirectory);
       continue;
     }
-    if (!current || line.startsWith('+++ ') || line.startsWith('--- ')) {
+    if (!current) {
       continue;
     }
     if (line.startsWith('@@')) {
       const anchor = extractRawPatchHunkAnchor(line);
       if (anchor) {
         current.lines.push(`@${anchor}`);
-        current.hasContext = true;
       }
     } else if (line.startsWith('+') || line.startsWith('-')) {
       current.lines.push(line);
     } else if (line.startsWith(' ')) {
       current.lines.push(line);
-      current.hasContext = true;
     }
   }
   if (current) {
@@ -452,19 +470,18 @@ function extractCanonicalFileChanges(
         return null;
       }
       const lines: string[] = [];
-      let hasContext = false;
+      let inHunk = false;
       for (const line of firstString(record.diff).split('\n')) {
         if (line.startsWith('@@')) {
+          inHunk = true;
           const anchor = extractCanonicalDiffHunkAnchor(line);
           if (anchor) {
             lines.push(`@${anchor}`);
-            hasContext = true;
           }
           continue;
         }
         if (
-          line.startsWith('+++ ')
-          || line.startsWith('--- ')
+          !inHunk && (line.startsWith('+++ ') || line.startsWith('--- '))
         ) {
           continue;
         }
@@ -472,7 +489,6 @@ function extractCanonicalFileChanges(
           lines.push(line);
         } else if (line.startsWith(' ')) {
           lines.push(line);
-          hasContext = true;
         }
       }
       const movePath = firstString(record.movePath);
@@ -489,8 +505,7 @@ function extractCanonicalFileChanges(
               ),
             }
           : {}),
-        lines,
-        hasContext,
+        lines: normalizeComparedChangeKind(firstString(record.kind, record.type)) === 'delete' ? [] : lines,
       };
     })
     .filter((change): change is ComparedFileChange => change !== null)

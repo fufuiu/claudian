@@ -140,6 +140,17 @@
   min-width: max(100%, 160px);
 }
 
+/* A floating menu (ToolbarMenu's floatingLayer) is fixed above its button's end edge. */
+.claudian-toolbar-popover.claudian-toolbar-popover--floating {
+  position: fixed;
+  top: auto;
+  bottom: var(--claudian-toolbar-popover-bottom);
+  inset-inline-start: auto;
+  right: var(--claudian-toolbar-popover-right);
+  min-width: var(--claudian-toolbar-popover-min-width);
+  max-width: 280px;
+}
+
 .claudian-toolbar-popover[hidden] {
   display: none;
 }
@@ -191,10 +202,10 @@
   background: var(--background-modifier-hover);
 }
 
-/* Every model's provider icon carries that provider's brand colour; names stay normal text. */
+/* Every model's provider icon carries that provider's logo colour; names stay normal text. */
 .claudian-toolbar-chip .claudian-model-provider-icon,
 .claudian-model-option .claudian-model-provider-icon {
-  color: var(--claudian-brand);
+  color: var(--claudian-provider-logo);
 }
 
 /* Hover and focus share a fill, so keyboard focus also needs an outline. */

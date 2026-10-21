@@ -9,16 +9,12 @@ const STATUS_ICONS: Partial<Record<ToolCallInfo['status'], string>> = {
   blocked: 'shield-off',
 };
 
-export function getToolStatusLabel(status: ToolCallInfo['status'] | 'cancelled'): string {
-  return t(`chat.tools.${status}Status`);
-}
-
 /** Replaces a tool status indicator's class, label and icon; running shows no icon. */
 export function setToolStatus(
   statusEl: HTMLElement,
   status: ToolCallInfo['status'],
   baseClass: string,
-  ariaLabel = t('chat.tools.status', { status: getToolStatusLabel(status) }),
+  ariaLabel = t(`chat.tools.status.${status}`),
 ): void {
   statusEl.className = baseClass;
   statusEl.empty();

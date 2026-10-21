@@ -2,6 +2,7 @@ import { DEFAULT_CLAUDIAN_SETTINGS } from '@test/helpers/defaultSettings';
 
 import { SettingsCoordinator } from '@/app/settings/SettingsCoordinator';
 import { type ApplicationDomains, startApplication } from '@/app/startup/ApplicationStartup';
+import { ProviderExecutionLifecycleRegistry } from '@/core/execution/ProviderExecutionLifecycleRegistry';
 import { ProviderRegistry } from '@/core/providers/ProviderRegistry';
 import { ProviderSettingsCoordinator } from '@/core/providers/ProviderSettingsCoordinator';
 import { isVersionedRuntimeInputFingerprint } from '@/core/providers/settings/RuntimeInputFingerprint';
@@ -27,8 +28,8 @@ describe('startApplication', () => {
       defaultSettings: DEFAULT_CLAUDIAN_SETTINGS,
       providers: overrides.providers ?? ProviderRegistry,
       providerSettings: ProviderSettingsCoordinator,
+      executionLifecycle: new ProviderExecutionLifecycleRegistry(),
       deferNonRestoredSessionMetadata: false,
-      isChatView: () => false,
       isUnloading: () => false,
       publishCommittedSettings: async () => undefined,
       onConversationDeleted: async () => undefined,
@@ -74,7 +75,6 @@ describe('startApplication', () => {
       workspace: {
         layoutReady: true,
         onLayoutReady: jest.fn(),
-        getLeavesOfType: jest.fn().mockReturnValue([]),
       },
     };
     plugin = {

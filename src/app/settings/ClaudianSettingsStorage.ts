@@ -24,6 +24,8 @@ import {
   type ProviderConfigMap,
   type SessionManagerOrganization,
   type StoredChatModelSelection,
+  type StoredInlineEditModelSelection,
+  type ZenModePosition,
 } from '../../core/types/settings';
 import { DEFAULT_CLAUDIAN_SETTINGS } from './defaultSettings';
 
@@ -71,6 +73,14 @@ function normalizeEnableZenMode(value: unknown): boolean {
   return typeof value === 'boolean'
     ? value
     : DEFAULT_CLAUDIAN_SETTINGS.enableZenMode;
+}
+
+function normalizeZenModePosition(value: unknown): ZenModePosition | null {
+  if (!value || typeof value !== 'object') return null;
+  const { x, y } = value as Record<string, unknown>;
+  return typeof x === 'number' && Number.isFinite(x) && typeof y === 'number' && Number.isFinite(y)
+    ? { x, y }
+    : null;
 }
 
 function normalizeDualPaneSide(value: unknown): DualPaneSide {
@@ -398,6 +408,15 @@ function normalizeStoredChatModelSelection(
   return { providerId, model };
 }
 
+function normalizeStoredInlineEditModelSelection(
+  value: unknown,
+): StoredInlineEditModelSelection | null {
+  const selection = normalizeStoredChatModelSelection(value);
+  if (!selection) return null;
+  const reasoning = trimStoredString((value as Record<string, unknown>).reasoning);
+  return reasoning ? { ...selection, reasoning } : selection;
+}
+
 function migrateLegacyChatModelSelection(
   stored: Record<string, unknown>,
 ): StoredChatModelSelection | null {
@@ -457,6 +476,7 @@ export class ClaudianSettingsStorage {
       ? stored.chatViewPlacement
       : DEFAULT_CLAUDIAN_SETTINGS.chatViewPlacement;
     const enableZenMode = normalizeEnableZenMode(stored.enableZenMode);
+    const zenModePosition = normalizeZenModePosition(stored.zenModePosition);
     const enableDualPane = normalizeEnableDualPane(stored.enableDualPane);
     const dualPaneSide = normalizeDualPaneSide(stored.dualPaneSide);
     const skillsSynced = stored.skillsSynced === true;
@@ -492,6 +512,7 @@ export class ClaudianSettingsStorage {
       providerConfigs,
       chatViewPlacement,
       enableZenMode,
+      zenModePosition,
       enableDualPane,
       dualPaneSide,
       restoreTabsOnStartup,
@@ -499,6 +520,7 @@ export class ClaudianSettingsStorage {
       sessionManagerOrganization,
       pinnedLinkedContentPaths,
       lastSelectedChatModel,
+      inlineEditModel: normalizeStoredInlineEditModelSelection(stored.inlineEditModel),
     };
 
     const merged = {

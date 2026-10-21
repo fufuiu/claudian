@@ -1,10 +1,7 @@
 import type { PermissionMode as SDKPermissionMode } from '@anthropic-ai/claude-agent-sdk';
 
-import { t } from '@/i18n/i18n';
-
 import { getProviderConfig } from '../../core/providers/providerConfig';
 import type {
-  ProviderPermissionModeOption,
   ProviderPermissionModePolicy,
 } from '../../core/providers/types';
 
@@ -36,18 +33,6 @@ export const CLAUDE_PERMISSION_MODE_POLICY: ProviderPermissionModePolicy = Objec
     return safeMode === undefined ? 'acceptEdits' : typeof safeMode === 'string' ? LEGACY_SAFE_MODES[safeMode] : undefined;
   },
 });
-
-export const CLAUDE_PERMISSION_MODE_OPTIONS: readonly ProviderPermissionModeOption[] = Object.freeze([
-  { value: 'auto', get label() { return t('permissions.claude.auto.label'); }, get description() { return t('permissions.claude.auto.description'); } },
-  { value: 'manual', get label() { return t('permissions.claude.manual.label'); }, get description() { return t('permissions.claude.manual.description'); } },
-  { value: 'acceptEdits', get label() { return t('permissions.claude.acceptEdits.label'); }, get description() { return t('permissions.claude.acceptEdits.description'); } },
-  {
-    value: 'yolo',
-    get label() { return t('permissions.claude.yolo.label'); },
-    get description() { return t('permissions.claude.yolo.description'); },
-    bypassesApprovals: true,
-  },
-]);
 
 export function isClaudePermissionMode(value: unknown): value is ClaudePermissionMode {
   return (CLAUDE_PERMISSION_MODES as readonly unknown[]).includes(value);

@@ -2,7 +2,6 @@ import { setIcon } from 'obsidian';
 
 import type { ScriptToolCallItem, ToolCallInfo } from '@/core/types';
 import { contentFallback, getInputText, truncateText } from '@/features/chat/rendering/tools/toolContentPrimitives';
-import { getToolStatusLabel } from '@/features/chat/rendering/tools/toolStatus';
 import { t } from '@/i18n/i18n';
 import { stringifyUnknown } from '@/utils/stringify';
 
@@ -56,7 +55,7 @@ function renderScriptToolCalls(container: HTMLElement, calls: ScriptToolCallItem
     const itemEl = listEl.createEl('li', { cls: 'claudian-tool-script-call' });
     const statusEl = itemEl.createSpan({
       cls: `claudian-tool-status status-${call.status}`,
-      attr: { role: 'img', 'aria-label': t('chat.tools.status', { status: getToolStatusLabel(call.status) }) },
+      attr: { role: 'img', 'aria-label': t(`chat.tools.status.${call.status}`) },
     });
     const icon = SCRIPT_CALL_STATUS_ICONS[call.status];
     if (icon) setIcon(statusEl, icon);
@@ -100,6 +99,6 @@ export function renderScriptContent(
   if (result) {
     container.createEl('pre', { cls: 'claudian-tool-script-output', text: result });
   } else if (!toolCall.resultImages?.length) {
-    contentFallback(container, toolCall.status === 'running' ? t('common.runningEllipsis') : t('chat.tools.noResult'));
+    contentFallback(container, toolCall.status === 'running' ? t('chat.tools.running') : t('chat.tools.noResult'));
   }
 }

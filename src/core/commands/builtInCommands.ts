@@ -1,18 +1,18 @@
-import { t } from '@/i18n/i18n';
-
 /**
  * Claudian - Built-in slash commands
  *
  * System commands that perform actions (not prompt expansions).
  * These are handled separately from user-defined slash commands.
  */
+
+import { t } from '@/i18n/i18n';
+
 import { ProviderRegistry } from '../providers/ProviderRegistry';
 import type { ProviderCapabilities, ProviderId } from '../providers/types';
 
 export type BuiltInCommandAction =
   | 'clear'
   | 'resume'
-  | 'fork'
   | 'fast'
   | 'side';
 type BuiltInCommandCapability =
@@ -43,22 +43,17 @@ export interface BuiltInCommandResult {
 
 export const BUILT_IN_COMMANDS: BuiltInCommand[] = [
   {
-    name: 'clear',
-    aliases: ['new'],
+    name: 'new',
+    aliases: ['clear'],
     get description() { return t('commands.descriptions.clear'); },
     action: 'clear',
   },
   {
-    name: 'resume',
+    name: 'sessions',
+    aliases: ['resume'],
     get description() { return t('commands.descriptions.resume'); },
     action: 'resume',
     requiredCapability: 'supportsNativeHistory',
-  },
-  {
-    name: 'fork',
-    get description() { return t('commands.descriptions.fork'); },
-    action: 'fork',
-    requiredCapability: 'supportsFork',
   },
   {
     name: 'fast',
@@ -127,8 +122,11 @@ export function detectBuiltInCommand(
   input: string,
   context?: BuiltInCommandSupportContext,
 ): BuiltInCommandResult | null {
+  // This matcher is deliberately single-line: a line break is never a command
+  // separator, so one anywhere in the trimmed candidate rejects the match.
+  if (/[\r\n\u2028\u2029]/.test(input.trim())) return null;
   const parsed = parseLeadingBuiltInCommand(input);
-  if (!parsed || /[\r\n\u2028\u2029]/.test(parsed.rawArguments)) return null;
+  if (!parsed) return null;
   const { command } = parsed;
   if (!isBuiltInCommandSupported(command, context)) return null;
   const args = parsed.rawArguments.trim();

@@ -23,9 +23,9 @@ export function getApplyPatchSummary(input: Record<string, unknown>): string {
     : [];
 
   const files = [...new Set([...patchFiles, ...changeFiles])];
-  if (files.length === 0) return patchText ? 'patch' : '';
+  if (files.length === 0) return patchText ? t('chat.tools.patch') : '';
   if (files.length === 1) return fileNameOnly(files[0]);
-  return `${files.length} files`;
+  return t('chat.tools.files', { count: files.length });
 }
 
 function getApplyPatchFileDiffs(input: Record<string, unknown>): ApplyPatchFileDiffs {
@@ -82,7 +82,7 @@ function renderApplyPatchDiffSections(container: HTMLElement, fileDiffs: ApplyPa
     }
 
     if (fileDiff.diffLines.length === 0) {
-      renderEmptyResult(sectionEl, t('chat.tools.noDiff'));
+      renderEmptyResult(sectionEl, t('chat.tools.noTextDiff'));
       continue;
     }
 

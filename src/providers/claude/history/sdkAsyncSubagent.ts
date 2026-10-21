@@ -1,5 +1,7 @@
 import type { AgentOutput } from '@anthropic-ai/claude-agent-sdk/sdk-tools';
 
+import { t } from '@/i18n/i18n';
+
 import type { SubagentInfo, ToolCallInfo } from '../../../core/types';
 import type { AsyncSubagentResult, ResolvedAsyncStatus } from './sdkHistoryTypes';
 
@@ -66,7 +68,7 @@ export function buildAsyncSubagentInfo(
   }
 
   const queueResult = asyncResults.get(agentId);
-  const description = (toolCall.input?.description as string) || 'Background task';
+  const description = (toolCall.input?.description as string) || t('chat.subagents.backgroundTask');
   const prompt = (toolCall.input?.prompt as string) || '';
   const finalResult = queueResult?.result ?? toolCall.result;
 

@@ -24,10 +24,13 @@ export interface PersistedPiProviderSettings {
   cliPathsByHost: HostnameCLIPaths;
   discoveredModels: PiDiscoveredModel[];
   enabled: boolean;
+  /** Fingerprint of every runtime input; a change restarts runtimes. */
   environmentHash: string;
   environmentVariables: string;
   modelAliases: Record<string, string>;
   preferredThinkingByModel: Record<string, PiThinkingLevel>;
+  /** Fingerprint of location-affecting inputs; a change invalidates native bindings. */
+  sessionEnvironmentHash: string;
   visibleModels: string[];
 }
 
@@ -42,13 +45,11 @@ export const DEFAULT_PI_PROVIDER_SETTINGS: Readonly<PersistedPiProviderSettings>
   environmentVariables: '',
   modelAliases: {},
   preferredThinkingByModel: {},
+  sessionEnvironmentHash: '',
   visibleModels: [],
 });
 
-export function normalizePiVisibleModels(
-  value: unknown,
-  discoveredModels: PiDiscoveredModel[] = [],
-): string[] {
+export function normalizePiVisibleModels(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -79,7 +80,7 @@ export function getPiProviderSettings(settings: Record<string, unknown>): PiProv
   const config = getProviderConfig(settings, 'pi');
   const cliPathsByHost = normalizeHostnameStringMap(config.cliPathsByHost);
   const discoveredModels = normalizePiDiscoveredModels(config.discoveredModels ?? config.selectedModels);
-  const visibleModels = normalizePiVisibleModels(config.visibleModels, discoveredModels);
+  const visibleModels = normalizePiVisibleModels(config.visibleModels);
   const persistableIds = getPersistablePiModelIds(settings, visibleModels);
 
   return {
@@ -106,6 +107,10 @@ export function getPiProviderSettings(settings: Record<string, unknown>): PiProv
       discoveredModels,
       persistableIds,
     ),
+    sessionEnvironmentHash: readStoredString(
+      config.sessionEnvironmentHash,
+      DEFAULT_PI_PROVIDER_SETTINGS.sessionEnvironmentHash,
+    ),
     visibleModels,
   };
 }
@@ -116,13 +121,8 @@ export function updatePiProviderSettings(
 ): PiProviderSettings {
   const current = getPiProviderSettings(settings);
   const hostnameKey = getInstallationKey();
-  const nextDiscoveredModels = normalizePiDiscoveredModels(
-    updates.discoveredModels ?? current.discoveredModels,
-  );
-  const nextVisibleModels = normalizePiVisibleModels(
-    updates.visibleModels ?? current.visibleModels,
-    nextDiscoveredModels,
-  );
+  const nextDiscoveredModels = normalizePiDiscoveredModels(updates.discoveredModels ?? current.discoveredModels,);
+  const nextVisibleModels = normalizePiVisibleModels(updates.visibleModels ?? current.visibleModels);
   const persistableIds = getPersistablePiModelIds(settings, nextVisibleModels);
   const nextModelAliases = pruneMapToPersistableIds(
     normalizePiModelAliasesForPersistableIds(
@@ -190,6 +190,7 @@ export function updatePiProviderSettings(
     environmentVariables: next.environmentVariables,
     modelAliases: next.modelAliases,
     preferredThinkingByModel: next.preferredThinkingByModel,
+    sessionEnvironmentHash: next.sessionEnvironmentHash,
     visibleModels: next.visibleModels,
   });
 

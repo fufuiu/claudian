@@ -1,3 +1,5 @@
+import { t } from '@/i18n/i18n';
+
 import { TOOL_SUBAGENT } from '../../../core/tools/toolNames';
 import type { ChatMessage, SubagentInfo, ToolCallInfo } from '../../../core/types';
 import { isRecord } from '../http/OpencodeHTTPClient';
@@ -81,7 +83,7 @@ function buildSubagentInfo(spawn: ToolCallInfo, sessionId: string, child: ChatMe
   const base = {
     id: spawn.id,
     agentId: sessionId,
-    description: task.description ?? 'Subagent task',
+    description: task.description ?? t('chat.subagents.task'),
     prompt: task.prompt ?? '',
     toolCalls,
     isExpanded: false,

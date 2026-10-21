@@ -1,4 +1,4 @@
-import { Notice } from 'obsidian';
+import { type Keymap, Notice } from 'obsidian';
 import * as path from 'path';
 
 import { normalizeImageMediaType } from '@/core/execution/imageAttachment';
@@ -46,6 +46,7 @@ export class ImageContextManager {
   };
 
   constructor(
+    private readonly keymap: Keymap,
     containerEl: HTMLElement,
     inputEl: ComposerInputElement,
     callbacks: ImageContextCallbacks,
@@ -220,16 +221,25 @@ export class ImageContextManager {
     const items = e.clipboardData?.items;
     if (!items) return;
 
+    // Collect files before the first await: clipboard items are only readable
+    // while the paste event is being dispatched.
+    const files: File[] = [];
+    let hasImage = false;
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       if (item.type.startsWith('image/')) {
-        e.preventDefault();
+        hasImage = true;
         const file = item.getAsFile();
-        if (file) {
-          await this.addImageFromFile(file, 'paste');
-        }
-        return;
+        if (file) files.push(file);
       }
+    }
+    if (!hasImage) return;
+    e.preventDefault();
+
+    const generation = this.attachmentGeneration;
+    for (const file of files) {
+      if (this.destroyed || generation !== this.attachmentGeneration) return;
+      await this.addImageFromFile(file, 'paste');
     }
   }
 
@@ -245,18 +255,18 @@ export class ImageContextManager {
   private async addImageFromFile(file: File, source: 'paste' | 'drop'): Promise<boolean> {
     if (this.destroyed) return false;
     if (!this.enabled) {
-      new Notice(t('chat.errors.imageUnsupported'));
+      new Notice(t('chat.images.unsupportedProvider'));
       return false;
     }
 
     if (file.size > MAX_IMAGE_SIZE) {
-      this.notifyImageError(t('chat.errors.imageSize', { size: this.formatSize(MAX_IMAGE_SIZE) }));
+      this.notifyImageError(t('chat.images.tooLarge', { size: this.formatSize(MAX_IMAGE_SIZE) }));
       return false;
     }
 
     const mediaType = this.getMediaType(file.name) ?? normalizeImageMediaType(file.type);
     if (!mediaType) {
-      this.notifyImageError(t('chat.errors.imageType'));
+      this.notifyImageError(t('chat.images.unsupportedType'));
       return false;
     }
 
@@ -280,7 +290,7 @@ export class ImageContextManager {
       return true;
     } catch (error) {
       if (this.destroyed || !this.enabled || generation !== this.attachmentGeneration) return false;
-      this.notifyImageError(t('chat.errors.imageAttach'), error);
+      this.notifyImageError(t('chat.images.attachFailed'), error);
       return false;
     }
   }
@@ -305,8 +315,8 @@ export class ImageContextManager {
     this.contextTray.setItems('images', images.map(([id, image], index) => ({
       id,
       kind: 'image' as const,
-      label: images.length === 1 ? t('chat.composer.image') : t('chat.composer.imageNumber', { index: index + 1 }),
-      ariaLabel: t('chat.composer.imageAttachment', { name: image.name, size: this.formatSize(image.size) }),
+      label: images.length === 1 ? t('chat.images.label') : t('chat.images.numbered', { number: index + 1 }),
+      ariaLabel: t('chat.images.attachment', { name: image.name, size: this.formatSize(image.size) }),
       onActivate: () => this.showFullImage(image),
       onRemove: () => {
         this.attachedImages.delete(id);
@@ -320,7 +330,7 @@ export class ImageContextManager {
     if (this.destroyed) return;
 
     const ownerDocument = this.containerEl.ownerDocument ?? window.document;
-    this.imagePreviewModal.open(ownerDocument, image);
+    this.imagePreviewModal.open(ownerDocument, image, this.keymap);
   }
 
   private generateId(): string {
@@ -337,9 +347,9 @@ export class ImageContextManager {
     let userMessage = message;
     if (error instanceof Error) {
       if (error.message.includes('ENOENT') || error.message.includes('no such file')) {
-        userMessage = t('chat.errors.fileNotFound', { message });
+        userMessage = t('chat.images.fileNotFound', { message });
       } else if (error.message.includes('EACCES') || error.message.includes('permission denied')) {
-        userMessage = t('chat.errors.permissionDenied', { message });
+        userMessage = t('chat.images.permissionDenied', { message });
       }
     }
     new Notice(userMessage);

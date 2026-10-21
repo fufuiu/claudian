@@ -116,7 +116,9 @@ export class ComposerContextTray {
     moreButton.removeClass('claudian-hidden');
     if (this.expanded) {
       this.containerEl.addClass('claudian-context-row--expanded');
-      moreButton.textContent = t('chat.composer.showLess');
+      const label = t('chat.composer.showLess');
+      moreButton.textContent = label;
+      moreButton.setAttribute('aria-label', label);
       moreButton.setAttribute('aria-expanded', 'true');
       return;
     }
@@ -138,8 +140,8 @@ export class ComposerContextTray {
     }
 
     const hiddenCount = chips.length - visibleCount;
-    moreButton.textContent = t('chat.composer.more', { count: hiddenCount });
-    moreButton.setAttribute('aria-label', t('chat.composer.showMore', { count: hiddenCount }));
+    moreButton.textContent = t('chat.composer.moreItems', { count: hiddenCount });
+    moreButton.setAttribute('aria-label', t('chat.composer.moreContext', { count: hiddenCount }));
   }
 
   destroy(): void {
@@ -224,7 +226,7 @@ export class ComposerContextTray {
         text: '\u00D7',
         attr: {
           type: 'button',
-          'aria-label': t('chat.composer.removeItem', { label: item.ariaLabel ?? item.label }),
+          'aria-label': t('chat.removeItem', { item: item.ariaLabel ?? item.label }),
         },
       });
       removeButton.addEventListener('click', item.onRemove);

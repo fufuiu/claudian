@@ -3,13 +3,13 @@ import { getProviderConfig } from '../../core/providers/providerConfig';
 import { hasStoredConfigNormalization } from '../../core/providers/settings/storedSettings';
 import type { ProviderModule } from '../../core/providers/types';
 import {
-  getPiWorkspaceServices,
   piWorkspaceRegistration,
 } from './app/PiWorkspaceServices';
 import { PI_PROVIDER_CAPABILITIES } from './capabilities';
 import { piSettingsReconciler } from './env/PiSettingsReconciler';
 import { PiExecutionBackend } from './execution/PiExecutionBackend';
 import { PiConversationHistoryService } from './history/PiConversationHistoryService';
+import { piPeepsSubagentAdapter } from './normalization/PiPeepsSubagents';
 import { piModelPolicy } from './PiModelPolicy';
 import { getPiProviderSettings, projectPiModelSettings, updatePiProviderSettings } from './settings';
 import { ObsidianPiExtensionUIRenderer } from './ui/ObsidianPiExtensionUIRenderer';
@@ -23,7 +23,6 @@ export const piProviderRegistration: ProviderModule = {
   chatUIConfig: piChatUIConfig,
   createExecutionBackend: (plugin) => new PiExecutionBackend(
     plugin,
-    getPiWorkspaceServices(),
     { extensionUiRenderer: new ObsidianPiExtensionUIRenderer(plugin.app) },
   ),
 
@@ -52,6 +51,7 @@ export const piProviderRegistration: ProviderModule = {
       );
     },
   },
+  subagentAdapter: piPeepsSubagentAdapter,
   taskResultInterpreter: NOOP_TASK_RESULT_INTERPRETER,
   workspace: piWorkspaceRegistration,
 };

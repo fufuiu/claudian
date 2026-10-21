@@ -1,4 +1,4 @@
-import { Setting } from 'obsidian';
+import { Notice, Setting } from 'obsidian';
 
 import { t } from '@/i18n/i18n';
 
@@ -73,10 +73,14 @@ export function renderEnvironmentSettingsSection(
       text.inputEl.addEventListener('input', () => updateReviewWarning());
       text.inputEl.addEventListener('blur', () => {
         void (async (): Promise<void> => {
-          await plugin.applyEnvironmentVariables(scope, text.inputEl.value);
-          refreshInstallations();
-          renderCustomContextLimits?.(contextLimitsContainer);
-          updateReviewWarning();
+          try {
+            await plugin.applyEnvironmentVariables(scope, text.inputEl.value);
+            refreshInstallations();
+            renderCustomContextLimits?.(contextLimitsContainer);
+            updateReviewWarning();
+          } catch {
+            new Notice('Could not complete environment update.');
+          }
         })();
       });
       envTextarea = text.inputEl;

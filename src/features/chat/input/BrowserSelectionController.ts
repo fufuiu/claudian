@@ -231,7 +231,7 @@ export class BrowserSelectionController {
   private updateIndicator(): void {
     if (this.storedSelection) {
       const lineCount = this.storedSelection.selectedText.split(/\r?\n/).length;
-      const label = t('chat.composer.linesSelected', { count: lineCount, unit: lineCount === 1 ? 'line' : 'lines' });
+      const label = t('chat.composer.linesSelected', { count: lineCount, unit: lineCount === 1 ? t('chat.composer.lineSingular') : t('chat.composer.linePlural') });
       this.contextTray.setItems('browser-selection', [{
         id: 'browser-selection',
         kind: 'selection',

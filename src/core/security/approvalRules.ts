@@ -1,6 +1,7 @@
+/** Permission utilities for tool action approval. */
+
 import { t } from '@/i18n/i18n';
 
-/** Permission utilities for tool action approval. */
 import {
   TOOL_BASH,
   TOOL_EDIT,
@@ -34,20 +35,20 @@ export function getActionPattern(toolName: string, input: Record<string, unknown
 }
 
 export function getActionDescription(toolName: string, input: Record<string, unknown>): string {
-  const pattern = getActionPattern(toolName, input) ?? t('chat.questions.unknown');
+  const pattern = getActionPattern(toolName, input) ?? t('chat.approval.unknownPattern');
   switch (toolName) {
     case TOOL_BASH:
-      return t('chat.questions.actions.run', { pattern });
+      return t('chat.approval.runCommand', { pattern });
     case TOOL_READ:
-      return t('chat.questions.actions.read', { pattern });
+      return t('chat.approval.readFile', { pattern });
     case TOOL_WRITE:
-      return t('chat.questions.actions.write', { pattern });
+      return t('chat.approval.writeFile', { pattern });
     case TOOL_EDIT:
-      return t('chat.questions.actions.edit', { pattern });
+      return t('chat.approval.editFile', { pattern });
     case TOOL_GLOB:
-      return t('chat.questions.actions.glob', { pattern });
+      return t('chat.approval.searchFiles', { pattern });
     case TOOL_GREP:
-      return t('chat.questions.actions.grep', { pattern });
+      return t('chat.approval.searchContent', { pattern });
     default:
       return `${toolName}: ${pattern}`;
   }

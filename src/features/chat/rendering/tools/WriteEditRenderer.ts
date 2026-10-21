@@ -40,7 +40,7 @@ interface WriteEditElements {
 }
 
 function createWriteEditElements(parentEl: HTMLElement, toolCall: ToolCallInfo): WriteEditElements {
-  const filePath = (toolCall.input.file_path as string) || 'file';
+  const filePath = (toolCall.input.file_path as string) || t('chat.tools.file');
   const toolName = toolCall.name; // 'Write' or 'Edit'
 
   const wrapperEl = parentEl.createDiv({ cls: 'claudian-write-edit-block' });
@@ -54,7 +54,7 @@ function createWriteEditElements(parentEl: HTMLElement, toolCall: ToolCallInfo):
   const nameEl = headerEl.createDiv({ cls: 'claudian-write-edit-name' });
   nameEl.setText(t(toolName === TOOL_WRITE ? 'chat.tools.names.write' : 'chat.tools.names.edit'));
   const summaryEl = headerEl.createDiv({ cls: 'claudian-write-edit-summary' });
-  summaryEl.setText(fileNameOnly(filePath) || 'file');
+  summaryEl.setText(fileNameOnly(filePath) || t('chat.tools.file'));
 
   const statsEl = headerEl.createDiv({ cls: 'claudian-write-edit-stats' });
   const statusEl = headerEl.createDiv({ cls: 'claudian-write-edit-status' });
@@ -82,7 +82,7 @@ export function createWriteEditBlock(
   } = createWriteEditElements(parentEl, toolCall);
 
   statusEl.addClass('status-running');
-  statusEl.setAttribute('aria-label', t('chat.tools.statusRunning'));
+  statusEl.setAttribute('aria-label', t('chat.tools.status.running'));
 
   // Initial loading state
   const loadingRow = contentEl.createDiv({ cls: 'claudian-write-edit-diff-row' });
@@ -137,11 +137,11 @@ export function finalizeWriteEditBlock(state: WriteEditState, isError: boolean):
   // Update status icon - only show icon on error
   state.statusEl.className = 'claudian-write-edit-status';
   state.statusEl.empty();
+  state.statusEl.setAttribute('aria-label', t(isError ? 'chat.tools.status.error' : 'chat.tools.status.completed'));
 
   if (isError) {
     state.statusEl.addClass('status-error');
     setIcon(state.statusEl, 'x');
-    state.statusEl.setAttribute('aria-label', t('chat.tools.statusError'));
 
     // Show error in content if no diff was shown
     if (!state.diffLines) {
@@ -155,7 +155,7 @@ export function finalizeWriteEditBlock(state: WriteEditState, isError: boolean):
     state.contentEl.empty();
     const row = state.contentEl.createDiv({ cls: 'claudian-write-edit-diff-row' });
     const doneEl = row.createDiv({ cls: 'claudian-write-edit-done-text' });
-    doneEl.setText(t('common.done'));
+    doneEl.setText(t('chat.tools.done'));
   }
 
   // Update wrapper class
@@ -173,6 +173,7 @@ export function renderStoredWriteEdit(
 ): HTMLElement {
   const isError = toolCall.status === 'error' || toolCall.status === 'blocked';
   const { wrapperEl, headerEl, statsEl, statusEl, contentEl, baseAriaLabel } = createWriteEditElements(parentEl, toolCall);
+  statusEl.setAttribute('aria-label', t(`chat.tools.status.${toolCall.status}`));
   if (isError) {
     wrapperEl.addClass('error');
   } else if (toolCall.status === 'completed') {
@@ -200,7 +201,7 @@ export function renderStoredWriteEdit(
       errorEl.setText(toolCall.result);
     } else {
       const doneEl = row.createDiv({ cls: 'claudian-write-edit-done-text' });
-      doneEl.setText(isError ? t('common.errorUpper') : t('common.done'));
+      doneEl.setText(isError ? t('chat.tools.errorResult') : t('chat.tools.done'));
     }
   };
   const eager = toolCall.status === 'running';

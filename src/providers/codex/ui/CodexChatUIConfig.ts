@@ -11,18 +11,18 @@ export const codexChatUIConfig: ProviderChatUIConfig = {
     const readOnly = getCodexProviderSettings(settings).safeMode === 'read-only';
     return [
       {
-        value: 'auto-review', label: t('permissions.codex.approve'),
-        description: t('permissions.codex.review'),
+        value: 'auto-review', label: t('chat.permissionMode.codex.autoReview'),
+        description: t('chat.permissionMode.codex.autoReviewDesc'),
       },
       {
-        value: 'normal', label: t('permissions.codex.ask'),
+        value: 'normal', label: t('chat.permissionMode.codex.normal'),
         description: readOnly
-          ? t('permissions.codex.askReadOnly')
-          : t('permissions.codex.askExtra'),
+          ? t('chat.permissionMode.codex.readOnlyDesc')
+          : t('chat.permissionMode.codex.normalDesc'),
       },
       {
-        value: 'yolo', label: t('permissions.codex.full'), bypassesApprovals: true,
-        description: t('permissions.codex.fullDescription'),
+        value: 'yolo', label: t('chat.permissionMode.codex.yolo'), bypassesApprovals: true,
+        description: t('chat.permissionMode.codex.yoloDesc'),
       },
     ];
   },

@@ -20,10 +20,10 @@ export function renderCitationGroup(
   const headerEl = wrapperEl.createDiv({ cls: 'claudian-citations-header' });
 
   headerEl.createSpan({ cls: 'claudian-citations-chevron', text: '\u203a' });
-  headerEl.createSpan({ cls: 'claudian-citations-label', text: t('chat.tools.memoryUsed') });
+  headerEl.createSpan({ cls: 'claudian-citations-label', text: t('chat.citations.memoryUsed') });
   headerEl.createSpan({
     cls: 'claudian-citations-count',
-    text: t('chat.tools.sources', { count: citations.entries.length, unit: citations.entries.length === 1 ? 'source' : 'sources' }),
+    text: t(citations.entries.length === 1 ? 'chat.citations.source' : 'chat.citations.sources', { count: citations.entries.length }),
   });
 
   const contentEl = wrapperEl.createDiv({ cls: 'claudian-citations-content' });
@@ -39,7 +39,7 @@ export function renderCitationGroup(
   }
 
   setupCollapsible(wrapperEl, headerEl, contentEl, { isExpanded: false }, {
-    baseAriaLabel: t('chat.tools.memorySources', { count: citations.entries.length, unit: citations.entries.length === 1 ? 'source' : 'sources' }),
+    baseAriaLabel: `${t('chat.citations.memoryUsed')}, ${t(citations.entries.length === 1 ? 'chat.citations.source' : 'chat.citations.sources', { count: citations.entries.length })}`,
   });
 
   return wrapperEl;

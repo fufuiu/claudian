@@ -44,6 +44,7 @@ import {
   reduceRequestedTurnIdentity,
 } from '@/features/chat/execution/RequestedTurnIdentity';
 import { SessionEventStream } from '@/features/chat/execution/SessionEventStream';
+import type { SessionToolBinding } from '@/features/chat/session-messaging/SessionMessagingService';
 import { t } from '@/i18n/i18n';
 import { throwIfAborted } from '@/utils/abort';
 import { toError } from '@/utils/error';
@@ -123,6 +124,7 @@ export interface ChatExecutionCoordinatorDeps {
   readonly interactionPort: ProviderInteractionPort;
   readonly vaultWorkingDirectory: string;
   readonly createId: () => string;
+  readonly bindSessionTools?: (conversationId: string) => SessionToolBinding;
   readonly onRequestedEvent?: (
     event: ProviderExecutionEvent,
     context: ChatExecutionEventContext,
@@ -176,6 +178,7 @@ interface SessionBinding {
   lastSnapshotRevision: number;
   pendingWorkCount: number;
   readonly events: SessionEventStream;
+  readonly sessionTools?: SessionToolBinding;
   model?: string;
 }
 
@@ -204,7 +207,8 @@ export class ChatExecutionInteractionStaleError extends Error {
 export class ChatExecutionPreHandoffError extends Error {
   override readonly cause: unknown;
 
-  constructor(cause: unknown) {
+  /** Provider-supplied explanation safe to show the user; absent for internal failures. */
+  constructor(cause: unknown, readonly userMessage?: string) {
     super(cause instanceof Error ? cause.message : String(cause));
     this.name = 'ChatExecutionPreHandoffError';
     this.cause = cause;
@@ -264,6 +268,9 @@ export class ChatExecutionCoordinator {
     return (this.#sessionBinding?.events.hasBackgroundWork ?? false)
       || (this.#sessionBinding?.session.hasBackgroundWork?.() ?? false);
   }
+
+  /** The same transition-published projection used by the working indicator. */
+  get publishedBackgroundWork(): boolean { return this.#publishedBackgroundWork; }
 
   /** Work observers recompute from current state, so only transitions are published. */
   #publishBackgroundWork(): void {
@@ -334,18 +341,26 @@ export class ChatExecutionCoordinator {
       );
     }
 
-    const supervised = this.#supervisor.acquire(
-      backend,
-      {
-        lifecycle: 'persistent',
-        nativePersistence: 'enabled',
-        resumeSeed: conversation.resumeSeed,
-        vaultWorkingDirectory: this.deps.vaultWorkingDirectory,
-        interactionPort: this.#interactions,
-      },
-      (reason) => this.#handleLeaseInvalidation(reason),
-      (event) => this.#handleSessionEvent(event),
-    );
+    const sessionTools = this.deps.bindSessionTools?.(conversation.conversationId);
+    let supervised;
+    try {
+      supervised = this.#supervisor.acquire(
+        backend,
+        {
+          lifecycle: 'persistent',
+          nativePersistence: 'enabled',
+          resumeSeed: conversation.resumeSeed,
+          vaultWorkingDirectory: this.deps.vaultWorkingDirectory,
+          interactionPort: this.#interactions,
+          sessionTools: sessionTools?.port,
+        },
+        (reason) => this.#handleLeaseInvalidation(reason),
+        (event) => this.#handleSessionEvent(event),
+      );
+    } catch (error) {
+      sessionTools?.dispose();
+      throw error;
+    }
     const binding: SessionBinding = {
       conversation,
       bindingId: this.deps.createId(),
@@ -354,6 +369,7 @@ export class ChatExecutionCoordinator {
       lastSnapshotRevision: -1,
       pendingWorkCount: 0,
       events: new SessionEventStream(supervised.session.sessionInstanceId),
+      sessionTools,
     };
     this.#sessionBinding = binding;
     this.#stale = false;
@@ -444,14 +460,17 @@ export class ChatExecutionCoordinator {
     if (this.#requestController?.signal.aborted) return;
     this.#requestController?.abort();
     const active = this.#activeExecution;
-    if (!active) {
-      if (this.hasBackgroundWork) this.#sessionBinding?.session.cancel();
-      return;
-    }
+    if (!active) return;
     active.terminationOverride = 'cancelled';
     active.requestController.abort();
     this.#interactions.dismissTurn(active.run.turnId, 'cancelled');
     active.run.cancel();
+  }
+
+  /** Stops provider background work; an active foreground execution is cancelled through `cancel`. */
+  cancelBackgroundWork(): void {
+    if (this.#activeExecution || !this.hasBackgroundWork) return;
+    this.#sessionBinding?.session.cancel();
   }
 
   async steer(submission: ChatTurnSubmission, signal?: AbortSignal): Promise<ChatSteerOutcome> {
@@ -528,6 +547,11 @@ export class ChatExecutionCoordinator {
         this.#pendingSteerAttempts.delete(submission.submissionId);
       }
     }
+  }
+
+  /** Submitted input retained until its echo or binding disposal, independently of the active queue entry. */
+  getSteerSubmission(inputId: string): ChatTurnSubmission | undefined {
+    return this.#pendingSteerAttempts.get(inputId)?.submission;
   }
 
   async acceptSteerFromProviderEvent(
@@ -716,7 +740,6 @@ export class ChatExecutionCoordinator {
       && this.#protectedOperationCount === 0
       && this.#activeExecution === null
       && !this.#interactions.hasPending
-      && this.#pendingSteerAttempts.size === 0
       && !binding.session.hasBackgroundWork?.()
       && !binding.events.hasBackgroundWork
       && binding.pendingWorkCount === 0
@@ -799,10 +822,11 @@ export class ChatExecutionCoordinator {
     );
 
     const { accepted, nativeUserMessageId, nativeAssistantMessageId, nativeCheckpointId } = identity;
-    if (isDefinitePreHandoffRejection(terminal, accepted)) {
-      throw new ChatExecutionPreHandoffError(
-        sinkFailure.value?.error ?? terminal,
-      );
+    const rejection = definitePreHandoffRejection(terminal, accepted);
+    if (rejection) {
+      throw sinkFailure.value
+        ? new ChatExecutionPreHandoffError(sinkFailure.value.error)
+        : new ChatExecutionPreHandoffError(rejection, rejection.message);
     }
     const unacceptedMissingSession = isUnacceptedMissingSession(terminal, accepted);
     const missingSessionTerminal = terminal?.type === 'execution_error'
@@ -906,10 +930,7 @@ export class ChatExecutionCoordinator {
     if (!binding || !this.#isBindingCurrent(binding)) return;
     const admitted = binding.events.accept(event, binding.model);
     if (!admitted) return;
-    if (event.type === 'background_turn_started') {
-      this.#publishBackgroundWork();
-    }
-    if (event.type === 'subagent_updated') this.#publishBackgroundWork();
+    this.#publishBackgroundWork();
     const eventWork: Promise<unknown>[] = [];
     if (event.type === 'session_state_changed' || event.type === 'permission_mode_changed') {
       eventWork.push(this.#persistSnapshot(binding, event.snapshot));
@@ -926,7 +947,6 @@ export class ChatExecutionCoordinator {
     }
     this.#trackBindingWork(binding, Promise.all(eventWork));
     if (event.type === 'background_turn_completed') {
-      this.#publishBackgroundWork();
       this.#restartIdleTimer();
     }
   }
@@ -976,6 +996,7 @@ export class ChatExecutionCoordinator {
     const binding = this.#sessionBinding;
     if (!binding) return;
     this.#sessionBinding = null;
+    binding.sessionTools?.dispose();
     this.#publishBackgroundWork();
     this.#stale = true;
     this.#pendingSteerAttempts.clear();
@@ -990,6 +1011,8 @@ export class ChatExecutionCoordinator {
   async #releaseSessionBinding(): Promise<void> {
     const binding = this.#sessionBinding;
     this.#sessionBinding = null;
+    binding?.sessionTools?.dispose();
+    this.#pendingSteerAttempts.clear();
     this.#clearIdleTimer();
     this.#publishBackgroundWork();
     try {
@@ -1117,6 +1140,7 @@ function createExecutionRequest(
   signal: AbortSignal,
 ): ProviderExecutionRequest {
   return {
+    inputId: submission.submissionId,
     input: [
       ...(submission.canonicalText
         ? [{ type: 'text' as const, text: submission.canonicalText }]
@@ -1157,18 +1181,16 @@ function createInterruptedResult(
   };
 }
 
-function isDefinitePreHandoffRejection(
+function definitePreHandoffRejection(
   terminal: Extract<
     ProviderExecutionEvent,
     { type: 'turn_completed' | 'cancelled' | 'execution_error' }
   > | undefined,
   accepted: boolean,
-): boolean {
-  return (
-    !accepted
-    && terminal?.type === 'execution_error'
-    && terminal.category === 'configuration'
-  );
+): Extract<ProviderExecutionEvent, { type: 'execution_error' }> | null {
+  return !accepted && terminal?.type === 'execution_error' && terminal.category === 'configuration'
+    ? terminal
+    : null;
 }
 
 function isUnacceptedMissingSession(

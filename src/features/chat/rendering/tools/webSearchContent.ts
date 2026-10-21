@@ -45,26 +45,30 @@ function normalizeWebSearchDisplayData(input: Record<string, unknown>): WebSearc
 }
 
 function getWebOperationLabel(actionType: string): string {
+  switch (actionType) {
+    case 'search': return t('chat.web.search');
+    case 'open_page': return t('chat.web.openPage');
+    case 'find_in_page': return t('chat.web.findInPage');
+  }
   const label = actionType.replace(/_/g, ' ');
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
 export function getWebSearchSummary(input: Record<string, unknown>, maxLength: number): string {
   if (Array.isArray(input.actions) && input.actions.length > 1) {
-    return t('chat.tools.webOperations', { count: input.actions.length });
+    return t('chat.web.operations', { count: input.actions.length });
   }
   if (Array.isArray(input.requests)) return getWebOperationLabel(getInputText(input, 'actionType'));
   const data = normalizeWebSearchDisplayData(input);
 
   switch (data.actionType) {
     case 'click':
-      return truncateText(t('chat.tools.clickLinkIn', { link: data.linkId, url: data.url }), maxLength);
+      return truncateText(t('chat.web.clickInPage', { id: data.linkId, url: data.url }), maxLength);
     case 'open_page':
-      return truncateText(t('chat.tools.openUrl', { url: data.url || t('chat.tools.openPage') }), maxLength);
+      return truncateText(data.url ? t('chat.web.open', { url: data.url }) : t('chat.web.openPage'), maxLength);
     case 'find_in_page': {
-      const target = data.pattern ? t('chat.tools.findPattern', { pattern: data.pattern }) : t('chat.tools.findPage');
-      const suffix = data.url ? t('chat.tools.inUrl', { url: data.url }) : '';
-      return truncateText(target + suffix, maxLength);
+      const target = data.pattern ? t('chat.web.find', { pattern: data.pattern }) : t('chat.web.findInPage');
+      return truncateText(data.url ? t('chat.web.inPage', { action: target, url: data.url }) : target, maxLength);
     }
     case 'search':
       return truncateText(data.query || data.queries[0] || '', maxLength);
@@ -75,7 +79,7 @@ export function getWebSearchSummary(input: Record<string, unknown>, maxLength: n
 
 export function getWebSearchLabel(input: Record<string, unknown>, maxLength: number): string {
   const summary = getWebSearchSummary(input, maxLength);
-  return `WebSearch: ${summary || 'search'}`;
+  return `WebSearch: ${summary || t('chat.web.searchTerm')}`;
 }
 
 function parseWebSearchLinks(result: string): WebSearchLink[] {
@@ -83,8 +87,13 @@ function parseWebSearchLinks(result: string): WebSearchLink[] {
   if (!linksMatch) return [];
 
   try {
-    const parsed = JSON.parse(linksMatch[1]) as WebSearchLink[];
-    return Array.isArray(parsed) ? parsed.filter(l => l.title && l.url) : [];
+    const parsed: unknown = JSON.parse(linksMatch[1]);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((entry): entry is WebSearchLink => {
+      if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) return false;
+      const { title, url } = entry as Record<string, unknown>;
+      return typeof title === 'string' && title.length > 0 && typeof url === 'string' && url.length > 0;
+    });
   } catch {
     return [];
   }
@@ -117,27 +126,27 @@ function renderWebSearchActionExpanded(container: HTMLElement, input: Record<str
 
   switch (data.actionType) {
     case 'click':
-      linesEl.createDiv({ cls: 'claudian-tool-line', text: t('chat.tools.clickLink', { link: data.linkId }) });
+      linesEl.createDiv({ cls: 'claudian-tool-line', text: t('chat.web.clickLink', { id: data.linkId }) });
       if (data.url) appendToolLink(linesEl, data.url, data.url);
       return true;
     case 'open_page':
-      linesEl.createDiv({ cls: 'claudian-tool-line', text: t('chat.tools.openPage') });
+      linesEl.createDiv({ cls: 'claudian-tool-line', text: t('chat.web.openPage') });
       if (data.url) {
         appendToolLink(linesEl, data.url, data.url);
       } else {
-        linesEl.createDiv({ cls: 'claudian-tool-line', text: t('chat.tools.urlUnavailable') });
+        linesEl.createDiv({ cls: 'claudian-tool-line', text: t('chat.web.urlUnavailable') });
       }
       return true;
 
     case 'find_in_page':
-      linesEl.createDiv({ cls: 'claudian-tool-line', text: t('chat.tools.findPage') });
+      linesEl.createDiv({ cls: 'claudian-tool-line', text: t('chat.web.findInPage') });
       if (data.url) {
         appendToolLink(linesEl, data.url, data.url);
       } else {
-        linesEl.createDiv({ cls: 'claudian-tool-line', text: t('chat.tools.urlUnavailable') });
+        linesEl.createDiv({ cls: 'claudian-tool-line', text: t('chat.web.urlUnavailable') });
       }
       if (data.pattern) {
-        linesEl.createDiv({ cls: 'claudian-tool-line', text: t('chat.tools.pattern', { pattern: data.pattern }) });
+        linesEl.createDiv({ cls: 'claudian-tool-line', text: t('chat.web.pattern', { pattern: data.pattern }) });
       }
       return true;
 
@@ -146,17 +155,17 @@ function renderWebSearchActionExpanded(container: HTMLElement, input: Record<str
       const primaryQuery = data.query || data.queries[0];
       linesEl.createDiv({
         cls: 'claudian-tool-line',
-        text: primaryQuery ? t('chat.tools.query', { query: primaryQuery }) : t('chat.tools.searchWeb'),
+        text: primaryQuery ? t('chat.web.query', { query: primaryQuery }) : t('chat.web.search'),
       });
 
       const alternateQueries = data.queries.filter(query => query !== primaryQuery);
       for (const query of alternateQueries.slice(0, 4)) {
-        linesEl.createDiv({ cls: 'claudian-tool-line', text: t('chat.tools.altQuery', { query }) });
+        linesEl.createDiv({ cls: 'claudian-tool-line', text: t('chat.web.altQuery', { query }) });
       }
       if (alternateQueries.length > 4) {
         linesEl.createDiv({
           cls: 'claudian-tool-truncated',
-          text: t('chat.tools.moreQueries', { count: alternateQueries.length - 4 }),
+          text: t('chat.web.moreQueries', { count: alternateQueries.length - 4 }),
         });
       }
       return true;

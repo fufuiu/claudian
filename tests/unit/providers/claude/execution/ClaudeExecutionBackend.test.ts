@@ -169,6 +169,25 @@ describe('ClaudeExecutionBackend', () => {
     jest.restoreAllMocks();
   });
 
+  it('restarts the query when session-tool attachment presence changes', async () => {
+    let sessionTools: ProviderSessionConfig['sessionTools'];
+    const config = createConfig();
+    Object.defineProperty(config, 'sessionTools', { get: () => sessionTools });
+    const session = new ClaudeExecutionBackend(createHost()).createSession(config);
+    try {
+      await collectEvents(session.execute(createRequest()).events);
+      expect(sdkMock.getLastOptions()?.mcpServers).toBeUndefined();
+      sessionTools = { list: async () => ({ sessions: [] }), send: jest.fn(), read: jest.fn() };
+      await collectEvents(session.execute(createRequest()).events);
+      expect(sdkMock.getQueryCallCount()).toBe(2);
+      expect(sdkMock.getLastOptions()?.mcpServers).toHaveProperty('claudian_sessions');
+      sessionTools = undefined;
+      await collectEvents(session.execute(createRequest()).events);
+      expect(sdkMock.getQueryCallCount()).toBe(3);
+      expect(sdkMock.getLastOptions()?.mcpServers).toBeUndefined();
+    } finally { await session.dispose(); }
+  });
+
   it('passes Node-backed CLI paths to the SDK even when Node discovery misses', async () => {
     jest.spyOn(env, 'findNodeExecutable').mockReturnValue(null);
     const host = createHost();
@@ -248,7 +267,8 @@ describe('ClaudeExecutionBackend', () => {
 
   it('keeps native success when cancellation arrives during stats loading', async () => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-throughput-'));
-    const directory = path.join(home, 'projects', '-vault');
+    const vaultPath = path.resolve('/vault');
+    const directory = path.join(home, 'projects', vaultPath.replace(/[^a-zA-Z0-9]/g, '-'));
     await fs.mkdir(directory, { recursive: true });
     const sessionFile = path.join(directory, 'session-1.jsonl');
     await fs.writeFile(sessionFile, [
@@ -595,6 +615,28 @@ describe('ClaudeExecutionBackend', () => {
     ]);
   });
 
+  it('starts fresh without a rewind checkpoint once the resume binding was cleared', async () => {
+    // Cleared resume state (#1651): the rewind checkpoint survives, but there is no session to resume.
+    sdkMock.setMockMessages([
+      { type: 'system', subtype: 'init', session_id: 'fresh-session' },
+      { type: 'result', subtype: 'success' },
+    ], { appendResult: false });
+    const session = new ClaudeExecutionBackend(createHost())
+      .createSession(createConfig({
+        resumeSeed: {
+          resumeCheckpoint: 'assistant-checkpoint',
+          providerState: { previousProviderSessionIds: ['retired-session'] },
+        },
+      }));
+
+    await collectEvents(session.execute(createRequest()).events);
+
+    const options = sdkMock.getLastOptions();
+    expect(options).not.toHaveProperty('resume');
+    expect(options).not.toHaveProperty('resumeSessionAt');
+    expect(session.getSnapshot().providerSessionId).toBe('fresh-session');
+  });
+
   it('resumes and materializes a pending fork without losing opaque provider state', async () => {
     sdkMock.setMockMessages([
       { type: 'system', subtype: 'init', session_id: 'forked-session' },
@@ -819,7 +861,7 @@ describe('ClaudeExecutionBackend', () => {
           mediaType: 'image/png', size: 5, source: 'paste',
         } }],
         context: { ...capturedSelections, linkedContent: { path: 'note.md' },
-          sessionReferences: [{ id: 'ref', title: 'Review', providerId: 'claude', updatedAt: 'updated', snapshotPath: '/tmp/ref.md' }],
+          sessionReferences: [{ id: 'ref', title: 'Review', providerId: 'claude', updatedAt: 'updated' }],
         },
       })).events);
       expect(mockBuildClaudeSDKUserMessage.mock.results[0]?.value.message.content).toBe(command);
@@ -866,11 +908,10 @@ describe('ClaudeExecutionBackend', () => {
       ],
       context: {
         ...capturedSelections,
-        sessionReferences: [{ id: 'conv-1-ref', title: 'Review', providerId: 'codex', updatedAt: 'updated', snapshotPath: '/tmp/claudian-sessions/ref.md' }],
+        sessionReferences: [{ id: 'conv-1-ref', title: 'Review', providerId: 'codex', updatedAt: 'updated' }],
         linkedContent: { path: 'note.md' },
       },
       configuration: {
-        readableRoots: ['/tmp/claudian-sessions'],
         systemInstructions: { kind: 'provider-default' },
       },
       toolPolicy: { kind: 'allow-list', names: ['Read', 'Grep'] },
@@ -882,14 +923,13 @@ describe('ClaudeExecutionBackend', () => {
         type: 'image',
         source: { type: 'base64', media_type: 'image/png', data: 'aW1hZ2U=' },
       },
-      { type: 'text', text: '@mentioned Explain this\n\n<linked_content path="note.md" />\n\n' + capturedSelectionPrompt + '\n\n<context_sessions>\n<context_session title="Review" id="conv-1-ref" provider="codex" updated="updated" path="/tmp/claudian-sessions/ref.md" />\n</context_sessions>' },
+      { type: 'text', text: '@mentioned Explain this\n\n<linked_content path="note.md" />\n\n' + capturedSelectionPrompt + '\n\n<context_sessions>\n<context_session title="Review" id="conv-1-ref" provider="codex" updated="updated" />\n</context_sessions>' },
     ]);
     expect(getEncodedPrompts()).toEqual([
-      '@mentioned Explain this\n\n<linked_content path="note.md" />\n\n' + capturedSelectionPrompt + '\n\n<context_sessions>\n<context_session title="Review" id="conv-1-ref" provider="codex" updated="updated" path="/tmp/claudian-sessions/ref.md" />\n</context_sessions>',
+      '@mentioned Explain this\n\n<linked_content path="note.md" />\n\n' + capturedSelectionPrompt + '\n\n<context_sessions>\n<context_session title="Review" id="conv-1-ref" provider="codex" updated="updated" />\n</context_sessions>',
     ]);
     expect(sdkMock.getLastOptions()).toEqual(expect.objectContaining({
       cwd: '/vault',
-      additionalDirectories: ['/tmp/claudian-sessions'],
       tools: ['Read', 'Grep'],
     }));
     expect(sdkMock.getLastOptions()?.mcpServers).toBeUndefined();
@@ -1843,6 +1883,7 @@ describe('ClaudeExecutionBackend', () => {
     });
     expect(conversation.sessionId).toBeNull();
     expect(conversation.providerState).toEqual({
+      bindingRetired: true,
       previousProviderSessionIds: ['previous-session'],
     });
 
@@ -2451,7 +2492,10 @@ describe('ClaudeExecutionBackend', () => {
     releaseDeferredMessage();
     await query.finished;
     expect(events).not.toContainEqual(expect.objectContaining({ type: 'text_delta', text: 'Cancelled late output' }));
-    expect(events.filter(event => event.type === 'background_turn_completed')).toHaveLength(1);
+    // Native interrupt records `[Request interrupted by user]` after the reply, which history replays as interrupted.
+    expect(events.filter(event => event.type === 'background_turn_completed')).toEqual([
+      expect.objectContaining({ reason: 'interrupted' }),
+    ]);
     await session.dispose();
   });
 
@@ -3086,6 +3130,10 @@ describe('ClaudeExecutionSession steering', () => {
     return { session, run, events, done, sessionEvents, loadQuery, getQuery: () => query };
   }
 
+  function sessionState(state: 'idle' | 'running') {
+    return { type: 'system', subtype: 'session_state_changed', state, session_id: 'session-1' };
+  }
+
   function steerRequest(text: string): ProviderExecutionRequest {
     return createRequest({ input: [{ type: 'text', text }] });
   }
@@ -3129,19 +3177,23 @@ describe('ClaudeExecutionSession steering', () => {
     }
   });
 
-  it('keeps the run open when Claude runs a late steer as its next native turn', async () => {
+  // Claude Code 2.1.302 reports no queued turns while a steer waits, and signals turn-over by going idle.
+  it.each(['queued-count', 'session-state'] as const)('keeps the run open when Claude runs a late steer as its next native turn (%s)', async wire => {
     const { session, events, done, sessionEvents } = await startSteerableSession(async function* (nextInput, keepOpen) {
       const prompt = await nextInput();
+      if (wire === 'session-state') yield sessionState('running');
       yield { type: 'system', subtype: 'init', session_id: 'session-1' };
       yield replayOf(prompt);
       yield assistantText('assistant-1', 'Parser refactored.');
       const steer = await nextInput();
-      yield { type: 'result', subtype: 'success', user_message_uuids: [prompt.uuid], queued_turn_count: 1 };
+      yield { type: 'result', subtype: 'success', user_message_uuids: [prompt.uuid], queued_turn_count: wire === 'queued-count' ? 1 : 0 };
+      if (wire === 'session-state') yield { type: 'system', subtype: 'init', session_id: 'session-1' };
       yield replayOf(steer);
       yield { type: 'stream_event', parent_tool_use_id: null, user_message_uuid: steer.uuid,
         event: { type: 'message_start', message: { id: 'message-2', usage: {} } } };
       yield assistantText('assistant-2', 'Also added tests.');
       yield { type: 'result', subtype: 'success', user_message_uuids: [steer.uuid], queued_turn_count: 0 };
+      if (wire === 'session-state') yield sessionState('idle');
       await keepOpen;
     });
     try {
@@ -3151,6 +3203,7 @@ describe('ClaudeExecutionSession steering', () => {
 
       expect(events.filter(event => event.type === 'text_delta').map(event => event.text))
         .toEqual(['Parser refactored.', 'Also added tests.']);
+      expect(events).toContainEqual(expect.objectContaining({ type: 'user_message_started', content: 'Add tests too' }));
       expect(events.filter(event => event.type === 'turn_completed')).toEqual([
         expect.objectContaining({ nativeAssistantId: 'assistant-2' }),
       ]);
@@ -3180,13 +3233,15 @@ describe('ClaudeExecutionSession steering', () => {
     }
   });
 
-  it('rejects a handed-off steer whose delivery ends unknown', async () => {
+  it.each(['queued-count', 'session-state'] as const)('rejects a handed-off steer whose delivery ends unknown (%s)', async wire => {
     const { session, events, done } = await startSteerableSession(async function* (nextInput, keepOpen) {
       const prompt = await nextInput();
+      if (wire === 'session-state') yield sessionState('running');
       yield { type: 'system', subtype: 'init', session_id: 'session-1' };
       yield assistantText('assistant-1', 'Working.');
       await nextInput();
       yield { type: 'result', subtype: 'success', user_message_uuids: [prompt.uuid], queued_turn_count: 0 };
+      if (wire === 'session-state') yield sessionState('idle');
       await keepOpen;
     });
     try {
@@ -3194,6 +3249,29 @@ describe('ClaudeExecutionSession steering', () => {
       await expect(session.steer(steerRequest('Be brief'))).rejects.toThrow('before the steer was delivered');
       await done;
       expect(events.at(-1)?.type).toBe('turn_completed');
+    } finally {
+      await session.dispose();
+    }
+  });
+
+  // Failed-delivery and session-scoped error results omit or narrow consumption echoes.
+  it.each(['no-echo', 'single-echo'] as const)('does not confirm a queued steer from an error result (%s)', async echo => {
+    const { session, events, done } = await startSteerableSession(async function* (nextInput, keepOpen) {
+      await nextInput();
+      yield { type: 'system', subtype: 'init', session_id: 'session-1' };
+      yield assistantText('assistant-1', 'Working.');
+      const steer = await nextInput();
+      yield {
+        type: 'result', subtype: 'error_during_execution', is_error: true, errors: ['Worker crashed'],
+        ...(echo === 'single-echo' ? { user_message_uuid: steer.uuid } : {}),
+      };
+      await keepOpen;
+    });
+    try {
+      await waitFor(() => events.some(event => event.type === 'text_delta'));
+      await expect(session.steer(steerRequest('Be brief'))).rejects.toThrow('before the steer was delivered');
+      await done;
+      expect(events.at(-1)?.type).not.toBe('turn_completed');
     } finally {
       await session.dispose();
     }

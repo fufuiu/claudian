@@ -2,28 +2,24 @@ import { t } from '@/i18n/i18n';
 
 import { ComposerDropdownView } from './ComposerDropdownView';
 import type {
-  ComposerDropdownFolderItem,
   ComposerDropdownItem,
   ComposerDropdownSource,
   ComposerInputElement,
   ComposerTriggerMatch,
 } from './types';
 
-interface ActiveFolder {
-  readonly item: ComposerDropdownFolderItem;
-}
-
 const INPUT_LOAD_DEBOUNCE_MS = 200;
 
 export interface ComposerDropdownControllerOptions {
   readonly fixed?: boolean;
+  /** Runs after the menu shows or hides. */
+  readonly onVisibilityChange?: () => void;
 }
 
 export class ComposerDropdownController {
   private readonly sourceUnsubscribers: Array<() => void> = [];
   private readonly view: ComposerDropdownView;
   private activeController: AbortController | null = null;
-  private activeFolder: ActiveFolder | null = null;
   private activeMatch: ComposerTriggerMatch | null = null;
   private activeSource: ComposerDropdownSource | null = null;
   private destroyed = false;
@@ -41,6 +37,7 @@ export class ComposerDropdownController {
     this.view = new ComposerDropdownView(containerEl, {
       fixed: options.fixed,
       inputEl,
+      onVisibilityChange: options.onVisibilityChange,
       onHover: index => this.#setSelectedIndex(index),
       onSelect: index => this.#selectIndex(index),
     });
@@ -74,17 +71,12 @@ export class ComposerDropdownController {
       return;
     }
     const cursor = this.inputEl.selectionStart ?? 0;
-    const folderMatch = this.#matchActiveFolder(this.inputEl.value, cursor);
     let sourceMatch: { match: ComposerTriggerMatch; source: ComposerDropdownSource } | undefined;
-    if (folderMatch && this.activeSource) {
-      sourceMatch = { match: folderMatch, source: this.activeSource };
-    } else {
-      for (const source of this.sources) {
-        const match = source.match(this.inputEl.value, cursor);
-        if (match && !this.inputEl.isChipRange?.(match.start, match.end)
-          && (!sourceMatch || match.start > sourceMatch.match.start)) {
-          sourceMatch = { match, source };
-        }
+    for (const source of this.sources) {
+      const match = source.match(this.inputEl.value, cursor);
+      if (match && !this.inputEl.isChipRange?.(match.start, match.end)
+        && (!sourceMatch || match.start > sourceMatch.match.start)) {
+        sourceMatch = { match, source };
       }
     }
     if (!sourceMatch) {
@@ -93,7 +85,6 @@ export class ComposerDropdownController {
     }
     const { match, source } = sourceMatch;
     const opening = this.activeSource?.id !== source.id;
-    if (opening) this.activeFolder = null;
     this.activeSource = source;
     this.activeMatch = match;
     if (opening) source.onOpen?.();
@@ -119,11 +110,7 @@ export class ComposerDropdownController {
         return true;
       case 'Escape':
         event.preventDefault();
-        if (this.activeFolder) {
-          this.#returnToRoot();
-        } else {
-          this.hide();
-        }
+        this.hide();
         return true;
       default:
         return false;
@@ -132,7 +119,6 @@ export class ComposerDropdownController {
 
   hide(): void {
     this.#invalidateActiveLoad();
-    this.activeFolder = null;
     this.activeMatch = null;
     this.activeSource = null;
     this.items = [];
@@ -142,27 +128,6 @@ export class ComposerDropdownController {
 
   isVisible(): boolean {
     return this.view.isVisible();
-  }
-
-  #currentFolderQuery(match: ComposerTriggerMatch): string | null {
-    const prefix = this.activeFolder?.item.inputPrefix;
-    if (!prefix) return match.query;
-    if (!match.query.toLocaleLowerCase().startsWith(prefix.toLocaleLowerCase())) return null;
-    return match.query.slice(prefix.length);
-  }
-
-  #matchActiveFolder(input: string, cursor: number): ComposerTriggerMatch | null {
-    const prefix = this.activeFolder?.item.inputPrefix;
-    const match = this.activeMatch;
-    if (!prefix || !match || cursor < match.start) return null;
-    const segment = input.slice(match.start, cursor);
-    const expected = `${match.trigger}${prefix}`;
-    if (!segment.toLocaleLowerCase().startsWith(expected.toLocaleLowerCase())) return null;
-    return {
-      ...match,
-      end: cursor,
-      query: segment.slice(match.trigger.length),
-    };
   }
 
   #rematchInput(): void {
@@ -175,13 +140,8 @@ export class ComposerDropdownController {
     const match = this.activeMatch;
     if (!source || !match || this.destroyed) return;
 
-    const folderQuery = this.#currentFolderQuery(match);
-    if (this.activeFolder && folderQuery === null) {
-      this.activeFolder = null;
-    }
-
     const generation = this.#invalidateActiveLoad();
-    this.items = [{ id: 'loading', kind: 'status', label: t('suggestions.loading'), state: 'loading' }];
+    this.items = [{ id: 'loading', kind: 'status', label: t('chat.suggestions.loading'), state: 'loading' }];
     this.selectedIndex = -1;
     this.view.render(this.items, this.selectedIndex);
 
@@ -210,13 +170,11 @@ export class ComposerDropdownController {
     this.activeController = controller;
 
     try {
-      const items = await (this.activeFolder
-        ? this.activeFolder.item.load(this.#currentFolderQuery(match) ?? '', controller.signal)
-        : source.load(match, controller.signal));
+      const items = await source.load(match, controller.signal);
       if (this.destroyed || controller.signal.aborted || generation !== this.generation) return;
       this.items = items.length > 0
         ? items
-        : [{ id: 'empty', kind: 'status', label: t('suggestions.noMatch'), state: 'empty' }];
+        : [{ id: 'empty', kind: 'status', label: t('chat.suggestions.noMatches'), state: 'empty' }];
       this.selectedIndex = this.#findSelectable(0, 1, true);
       this.view.render(this.items, this.selectedIndex);
     } catch {
@@ -224,8 +182,8 @@ export class ComposerDropdownController {
       this.items = [{
         id: 'error',
         kind: 'status',
-        label: t('suggestions.failed'),
-        detail: t('suggestions.retryHint'),
+        label: t('chat.suggestions.loadFailed'),
+        detail: t('chat.suggestions.retryHint'),
         state: 'error',
       }];
       this.selectedIndex = -1;
@@ -264,41 +222,11 @@ export class ComposerDropdownController {
     return -1;
   }
 
-  #returnToRoot(): void {
-    const folder = this.activeFolder;
-    const match = this.activeMatch;
-    this.activeFolder = null;
-    if (folder?.item.inputPrefix && match) {
-      this.replaceRange(match, match.trigger);
-      this.activeMatch = {
-        ...match,
-        end: match.start + match.trigger.length,
-        query: '',
-      };
-    }
-    this.#requestActiveLoad(false);
-  }
-
   #selectIndex(index: number): void {
     const item = this.items[index];
     const source = this.activeSource;
     const match = this.activeMatch;
     if (!item || item.kind === 'status' || item.disabled || !source || !match) return;
-    if (item.kind === 'folder') {
-      this.activeFolder = { item };
-      if (item.inputPrefix !== undefined) {
-        const replacement = `${match.trigger}${item.inputPrefix}`;
-        this.replaceRange(match, replacement);
-        this.activeMatch = {
-          ...match,
-          end: match.start + replacement.length,
-          query: item.inputPrefix,
-        };
-      }
-      this.#requestActiveLoad(false);
-      return;
-    }
-
     const action = source.select(item, match);
     if (action.kind === 'invoke') {
       action.onApplied();

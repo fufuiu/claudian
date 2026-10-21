@@ -1,9 +1,9 @@
 import type { ProviderSessionReference } from '@/core/execution/ProviderExecutionRequest';
 import type { ChatFeatureHost } from '@/features/chat/ChatFeatureHost';
 import { findComposerSessionMentions } from '@/features/chat/composer/composerSessionMentions';
-import { formatSessionSnapshot } from '@/features/chat/input/formatSessionSnapshot';
 import { t } from '@/i18n/i18n';
 
+/** Mentions become id references; the agent reads the session itself with the read-session tool. */
 export async function resolveSessionMentions(
   host: ChatFeatureHost,
   text: string,
@@ -18,15 +18,9 @@ export async function resolveSessionMentions(
       const conversation = await host.getConversationById(mention.conversationId);
       signal.throwIfAborted();
       if (!conversation || !conversation.messages.length) throw new Error(t('chat.errors.historyUnavailable'));
-      const owner = host.findConversationAcrossViews(conversation.id);
-      const tab = owner?.view.getTabManager()?.getTab(owner.tabId);
-      const live = tab?.hydrationState === 'ready' && tab.conversationId === conversation.id ? tab.state : null;
-      const markdown = formatSessionSnapshot(conversation, live?.messages ?? conversation.messages, live?.isStreaming ?? false);
-      const snapshotPath = await host.writeSessionSnapshot(conversation.id, markdown);
-      signal.throwIfAborted();
       references.set(conversation.id, {
         id: conversation.id, title: conversation.title, providerId: conversation.providerId,
-        updatedAt: new Date(conversation.lastActivityAt).toISOString(), snapshotPath,
+        updatedAt: new Date(conversation.lastActivityAt).toISOString(),
       });
     } catch (error) {
       if (signal.aborted) throw error;

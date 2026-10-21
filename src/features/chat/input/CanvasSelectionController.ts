@@ -90,7 +90,7 @@ export class CanvasSelectionController {
   private updateIndicator(): void {
     if (this.storedSelection) {
       const { nodeIds } = this.storedSelection;
-      const label = t('chat.composer.nodesSelected', { count: nodeIds.length, unit: nodeIds.length === 1 ? 'node' : 'nodes' });
+      const label = t('chat.composer.nodesSelected', { count: nodeIds.length, unit: nodeIds.length === 1 ? t('chat.composer.nodeSingular') : t('chat.composer.nodePlural') });
       this.contextTray.setItems('canvas-selection', [{
         id: 'canvas-selection',
         kind: 'selection',

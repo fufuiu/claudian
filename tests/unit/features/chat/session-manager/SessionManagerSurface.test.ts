@@ -7,10 +7,8 @@ import type { ConversationMeta } from '@/core/types';
 import type { ChatFeatureHost } from '@/features/chat/ChatFeatureHost';
 import { ConversationLifecycle } from '@/features/chat/conversation/ConversationLifecycle';
 import { SessionBrowser } from '@/features/chat/session-manager/SessionBrowser';
-import {
-  SessionManagerSurface,
-  type SessionSurfaceNavigation,
-} from '@/features/chat/session-manager/SessionManagerSurface';
+import { SessionManagerSurface } from '@/features/chat/session-manager/SessionManagerSurface';
+import type { SessionSurfaceNavigation } from '@/features/chat/session-manager/SessionSurfaceShared';
 import { ChatViewPublisher } from '@/features/chat/workspace/ChatViewPublisher';
 
 type MockMenuItem = { title: string; checked: boolean | null; clickHandler: (() => void) | null };
@@ -70,7 +68,6 @@ function createHarness(options: HarnessOptions = {}) {
   const navigation = {
     contentExists: jest.fn((_contentPath: string) => true),
     getConversationStatus: jest.fn((_id: string) => ({ openState: 'closed' as const, isRunning: false })),
-    hasUnboundDraft: jest.fn(() => false),
     openConversation: jest.fn().mockResolvedValue(undefined),
     openSessionConversation: jest.fn().mockResolvedValue(undefined),
     startLinkedContentConversation: jest.fn().mockResolvedValue(undefined),
@@ -715,22 +712,10 @@ describe('SessionManagerSurface New availability', () => {
     expect(availability(newControl(h))).toEqual(AVAILABLE);
   });
 
-  it('keeps the dual-mode New control available to resume an unbound draft at capacity', () => {
-    const h = createHarness({ canCreateTab: false });
-    h.surface.renderSidebar();
-    expect(availability(newControl(h))).toEqual(UNAVAILABLE);
-
-    h.navigation.hasUnboundDraft.mockReturnValue(true);
-    h.surface.refreshNewAvailability();
-
-    expect(availability(newControl(h))).toEqual(AVAILABLE);
-  });
-
   it('leaves New untouched while the view has no tabs', () => {
     const h = createHarness({ canCreateTab: false });
     h.surface.renderSidebar();
     h.state.canCreateTab = null;
-    h.navigation.hasUnboundDraft.mockReturnValue(true);
 
     h.surface.refreshNewAvailability();
 
@@ -859,7 +844,7 @@ describe('SessionManagerSurface history dropdown', () => {
 
     expect(render).not.toHaveBeenCalled();
 
-    h.surface.toggleDropdown();
+    h.historyButton.click();
 
     expect(h.historyMenu.hasClass('visible')).toBe(true);
     expect(render).toHaveBeenCalledTimes(1);
@@ -869,7 +854,7 @@ describe('SessionManagerSurface history dropdown', () => {
 
     expect(render).toHaveBeenCalledTimes(2);
 
-    h.surface.toggleDropdown();
+    h.historyButton.click();
     expect(h.historyMenu.hasClass('visible')).toBe(false);
     expect(signalOf(0).aborted).toBe(true);
     expect(signalOf(1).aborted).toBe(true);
@@ -877,14 +862,14 @@ describe('SessionManagerSurface history dropdown', () => {
 
     expect(render).toHaveBeenCalledTimes(2);
 
-    h.surface.toggleDropdown();
+    h.historyButton.click();
 
     expect(render).toHaveBeenCalledTimes(3);
     expect(signalOf(2).aborted).toBe(false);
 
     // Dismissing keeps the current render, so reopening does not rebuild the list.
     h.surface.dismissDropdown();
-    h.surface.toggleDropdown();
+    h.historyButton.click();
     expect(h.historyMenu.hasClass('visible')).toBe(true);
     expect(render).toHaveBeenCalledTimes(3);
     expect(signalOf(2).aborted).toBe(false);
@@ -912,6 +897,7 @@ describe('SessionManagerSurface history dropdown', () => {
       ],
       conversationLifecycle: new ConversationLifecycle({
         conversations: { deleteConversation } as never,
+        sessions: { get: () => null, isRunning: id => id === 'running', retire: async () => undefined, whenSettled: async () => true },
         views: { getAllViews: () => [{ getTabManager: () => manager }] as never },
       }),
       getActiveTab: () => activeTab,
@@ -947,8 +933,36 @@ describe('SessionManagerSurface wide layout transitions', () => {
     expect(signalOf(render, 0).aborted).toBe(true);
     // The cancelled render left the list stale, so the next open renders it again.
     h.state.wide = false;
-    h.surface.toggleDropdown();
+    h.historyButton.click();
     expect(render).toHaveBeenCalledTimes(2);
+  });
+
+  it('carries the archive view between the sidebar and the history dropdown', () => {
+    const h = createHarness({
+      conversations: [conversation('active'), conversation('archived', { isArchived: true })],
+    });
+    h.surface.renderSidebar();
+    h.sessionSurfaceEl.querySelector('.claudian-session-archive-control').click();
+    expect(renderedIds(h.sessionSurfaceEl)).toEqual(['archived']);
+
+    h.state.wide = false;
+    h.surface.leaveWide();
+    h.historyButton.click();
+
+    expect(renderedIds(h.historyMenu)).toEqual(['archived']);
+    expect(navLabel(h.historyMenu.querySelector('.claudian-history-archive-control')))
+      .toBe('Sessions');
+
+    h.historyMenu.querySelector('.claudian-history-archive-control').click();
+    expect(renderedIds(h.historyMenu)).toEqual(['active']);
+
+    h.state.wide = true;
+    h.surface.enterWide();
+    h.surface.renderSidebar();
+
+    expect(renderedIds(h.sessionSurfaceEl)).toEqual(['active']);
+    expect(navLabel(h.sessionSurfaceEl.querySelector('.claudian-session-archive-control')))
+      .toBe('Archive');
   });
 
   it('closes search and abandons the sidebar render when leaving wide', () => {

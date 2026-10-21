@@ -27,12 +27,14 @@ import type {
   UserInputResponse,
 } from '@/providers/codex/runtime/codexAppServerTypes';
 import type { CodexDynamicToolRegistry } from '@/providers/codex/runtime/CodexDynamicToolRegistry';
+import { isCodexSessionTool } from '@/providers/codex/runtime/CodexSessionTools';
 
 interface ActiveInteractionTurn {
   readonly localTurnId: string;
   readonly nativeThreadId: string;
   readonly nativeTurnId: string;
   readonly toolPolicy: ProviderToolPolicy;
+  readonly cancellation: AbortController;
 }
 
 interface PendingServerRequest {
@@ -115,6 +117,7 @@ export class CodexExecutionServerRequestRouter {
   abortAll(reason: ProviderInteractionDismissReason): void {
     this.pendingByNativeKey.clear();
     this.interactions.dismissAll(reason);
+    this.activeTurn?.cancellation.abort();
     this.activeTurn = null;
   }
 
@@ -122,10 +125,16 @@ export class CodexExecutionServerRequestRouter {
     params: DynamicToolCallParams,
   ): Promise<DynamicToolCallResponse> {
     const turn = this.#requireActiveTurn(params.threadId, params.turnId);
-    if (!this.dynamicToolRegistry || !isDynamicToolAllowed(turn.toolPolicy, params)) {
+    if (
+      !this.dynamicToolRegistry
+      || (!isCodexSessionTool(params.namespace, params.tool) && !isDynamicToolAllowed(turn.toolPolicy, params))
+    ) {
       throw new Error(`Unsupported dynamic tool: ${qualifiedToolName(params)}`);
     }
-    return this.dynamicToolRegistry.execute(params);
+    return this.dynamicToolRegistry.execute(params, {
+      signal: turn.cancellation.signal,
+      toolPolicy: turn.toolPolicy,
+    });
   }
 
   async #handleCommandApproval(
@@ -199,7 +208,7 @@ export class CodexExecutionServerRequestRouter {
           reason: params.reason ?? null,
           grantRoot: params.grantRoot ?? null,
         },
-        description: params.reason ? `File change: ${params.reason}` : 'File change',
+        description: params.reason ? t('chat.approval.fileChangeReason', { reason: params.reason }) : t('chat.approval.fileChange'),
         nativeContext: {
           requestId,
           threadId: params.threadId,
@@ -236,8 +245,8 @@ export class CodexExecutionServerRequestRouter {
         toolName: 'permissions',
         input: params.permissions as Readonly<Record<string, unknown>>,
         description: params.reason
-          ? `Permission request: ${params.reason}`
-          : 'Permission request',
+          ? t('chat.approval.permissionReason', { reason: params.reason })
+          : t('chat.approval.permissionRequest'),
         ...(params.reason ? { decisionReason: params.reason } : {}),
         nativeContext: {
           requestId,
@@ -293,11 +302,16 @@ export class CodexExecutionServerRequestRouter {
 
       const answers: UserInputResponse['answers'] = {};
       for (const [key, value] of Object.entries(response.answers)) {
-        answers[key] = {
-          answers: (Array.isArray(value) ? value : [value])
-            .map(answer => String(answer))
-            .filter(answer => answer.trim().length > 0),
-        };
+        Object.defineProperty(answers, key, {
+          value: {
+            answers: (Array.isArray(value) ? value : [value])
+              .map(answer => String(answer))
+              .filter(answer => answer.trim().length > 0),
+          },
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
       }
       return { answers };
     } finally {
@@ -334,12 +348,12 @@ export class CodexExecutionServerRequestRouter {
         input: {
           questions: [{
             id: MCP_CONFIRMATION_QUESTION_ID,
-            header: t('chat.questions.mcpRequest'),
-            question: t('chat.questions.mcpServer', { server: params.serverName, message: params.message }),
+            header: t('chat.approval.mcpRequest'),
+            question: `${t('chat.approval.mcpServer', { server: params.serverName })}\n\n${params.message}`,
             options: [
-              { label: t('common.cancel'), description: t('chat.questions.cancelRequest'), value: 'cancel' },
-              { label: t('chat.questions.decline'), description: t('chat.questions.declineRequest'), value: 'decline' },
-              { label: t('chat.questions.allow'), description: t('chat.questions.acceptRequest'), value: 'accept' },
+              { label: t('common.cancel'), description: t('chat.approval.cancelRequest'), value: 'cancel' },
+              { label: t('chat.approval.decline'), description: t('chat.approval.declineRequest'), value: 'decline' },
+              { label: t('chat.approval.allow'), description: t('chat.approval.acceptRequest'), value: 'accept' },
             ],
             multiSelect: false,
             isOther: false,
@@ -379,7 +393,7 @@ export class CodexExecutionServerRequestRouter {
     nativeTurnId: string,
   ): ActiveInteractionTurn {
     if (!this.observeNativeTurn(threadId, nativeTurnId)) {
-      throw new Error('Stale Codex CLI server request');
+      throw new Error('Stale Codex server request');
     }
 
     const turn = this.activeTurn;
@@ -388,7 +402,7 @@ export class CodexExecutionServerRequestRouter {
       || turn.nativeThreadId !== threadId
       || turn.nativeTurnId !== nativeTurnId
     ) {
-      throw new Error('Stale Codex CLI server request');
+      throw new Error('Stale Codex server request');
     }
     return turn;
   }
@@ -399,7 +413,7 @@ export class CodexExecutionServerRequestRouter {
   ): PendingServerRequest {
     const nativeKey = nativeRequestKey(threadId, requestId);
     if (this.pendingByNativeKey.has(nativeKey)) {
-      throw new Error('Duplicate Codex CLI server request');
+      throw new Error('Duplicate Codex server request');
     }
 
     const interactionId =
@@ -475,9 +489,9 @@ function isDynamicToolAllowed(
 
 function describeCommandApproval(params: CommandApprovalRequest): string {
   if (params.networkApprovalContext) {
-    return t('chat.questions.networkAccess', { protocol: params.networkApprovalContext.protocol, host: params.networkApprovalContext.host });
+    return t('chat.approval.networkAccess', { protocol: params.networkApprovalContext.protocol, host: params.networkApprovalContext.host });
   }
-  return params.command ? t('chat.questions.execute', { command: params.command }) : t('chat.questions.executeCommand');
+  return params.command ? t('chat.approval.execute', { command: params.command }) : t('chat.approval.executeCommand');
 }
 
 function buildCommandApprovalDecisionOptions(
@@ -493,34 +507,34 @@ function mapDecisionOption(
   params: CommandApprovalRequest,
 ): ProviderApprovalDecisionOption {
   if (decision === 'accept') {
-    return { label: t('chat.questions.allowOnce'), value: 'allow-once', decision: 'allow' };
+    return { label: t('chat.approval.allowOnce'), value: 'allow-once', decision: 'allow' };
   }
   if (decision === 'acceptForSession') {
     return {
-      label: t('chat.questions.alwaysAllow'),
+      label: t('chat.approval.alwaysAllow'),
       value: 'allow-always',
       decision: 'allow-always',
     };
   }
   if (decision === 'decline') {
-    return { label: t('chat.questions.deny'), value: 'deny', decision: 'deny' };
+    return { label: t('chat.approval.deny'), value: 'deny', decision: 'deny' };
   }
   if (decision === 'cancel') {
     return { label: t('common.cancel'), value: 'cancel', decision: 'cancel' };
   }
   if ('acceptWithExecpolicyAmendment' in decision) {
     return {
-      label: t('chat.questions.allowSimilar'),
-      description: t('chat.questions.storePolicy'),
+      label: t('chat.approval.allowSimilar'),
+      description: t('chat.approval.execPolicy'),
       value: JSON.stringify(decision),
     };
   }
 
   const amendment = decision.applyNetworkPolicyAmendment.network_policy_amendment;
-  const host = amendment.host || params.networkApprovalContext?.host || 'host';
+  const host = amendment.host || params.networkApprovalContext?.host || t('chat.approval.host');
   return {
-    label: t('chat.questions.hostSession', { action: amendment.action === 'deny' ? t('chat.questions.deny') : t('chat.questions.allow'), host }),
-    description: t('chat.questions.hostRule', { action: amendment.action === 'deny' ? t('chat.questions.deny') : t('chat.questions.allow'), host }),
+    label: t(amendment.action === 'deny' ? 'chat.approval.denyHost' : 'chat.approval.allowHost', { host }),
+    description: t(amendment.action === 'deny' ? 'chat.approval.denyRule' : 'chat.approval.allowRule', { host }),
     value: JSON.stringify(decision),
   };
 }

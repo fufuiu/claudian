@@ -164,6 +164,21 @@ describe('ClaudianSettingsStorage', () => {
       expect(writtenContent.lastSelectedChatModel).toBeNull();
     });
 
+    it.each([
+      {
+        stored: { providerId: 'codex', model: 'codex/gpt-5', reasoning: 'low' },
+        expected: { providerId: 'codex', model: 'codex/gpt-5', reasoning: 'low' },
+      },
+      { stored: { providerId: 'codex', model: 'codex/gpt-5', reasoning: 7 }, expected: { providerId: 'codex', model: 'codex/gpt-5' } },
+      { stored: { providerId: 'codex', model: 42 }, expected: null },
+      { stored: undefined, expected: null },
+    ])('loads the inline edit default model $stored as $expected', async ({ stored, expected }) => {
+      mockAdapter.exists.mockResolvedValue(true);
+      mockAdapter.read.mockResolvedValue(JSON.stringify(stored === undefined ? {} : { inlineEditModel: stored }));
+
+      expect((await storage.load()).inlineEditModel).toEqual(expected);
+    });
+
     it('migrates the live top-level model for the stored settings provider', async () => {
       mockAdapter.exists.mockResolvedValue(true);
       mockAdapter.read.mockResolvedValue(JSON.stringify({
@@ -347,6 +362,20 @@ describe('ClaudianSettingsStorage', () => {
 
       expect(result.enableZenMode).toBe(true);
       expect(JSON.parse(mockAdapter.write.mock.calls.at(-1)![1]).enableZenMode).toBe(true);
+    });
+
+    it.each([
+      ['missing', {}, null],
+      ['docked', { zenModePosition: null }, null],
+      ['moved', { zenModePosition: { x: -0.2, y: 0.375 } }, { x: -0.2, y: 0.375 }],
+      ['malformed', { zenModePosition: { x: '1', y: 0.5 } }, null],
+    ])('loads a %s zen panel position', async (_label, stored, expected) => {
+      mockAdapter.exists.mockResolvedValue(true);
+      mockAdapter.read.mockResolvedValue(JSON.stringify(stored));
+
+      const result = await storage.load();
+
+      expect(result.zenModePosition).toEqual(expected);
     });
 
     it('normalizes claude provider CLI paths from loaded data', async () => {

@@ -11,7 +11,7 @@ import {
   getToolSummary,
   renderExpandedContent,
 } from '@/features/chat/rendering/tools/toolPresentation';
-import { getToolStatusLabel, setToolStatus } from '@/features/chat/rendering/tools/toolStatus';
+import { setToolStatus } from '@/features/chat/rendering/tools/toolStatus';
 import { t } from '@/i18n/i18n';
 import { formatDurationMmSs } from '@/utils/date';
 
@@ -79,9 +79,9 @@ function setPromptText(promptBodyEl: HTMLElement, prompt: string): void {
 function updateSyncHeaderAria(state: SubagentState): void {
   state.headerEl.setAttribute(
     'aria-label',
-    t('chat.subagents.taskStatus', { description: state.info.description, status: getToolStatusLabel(state.info.status) })
+    t('chat.subagents.taskStatus', { description: state.info.description, status: t(`chat.tools.status.${state.info.status}`) })
   );
-  state.statusEl.setAttribute('aria-label', t('chat.tools.status', { status: getToolStatusLabel(state.info.status) }));
+  state.statusEl.setAttribute('aria-label', t(`chat.tools.status.${state.info.status}`));
 }
 
 function renderSubagentToolContent(contentEl: HTMLElement, toolCall: ToolCallInfo): void {
@@ -154,7 +154,7 @@ function formatTokenCount(tokens: number): string {
 function formatProgressMeta(progress: SubagentProgress): string {
   const parts: string[] = [];
   if (progress.toolUses !== undefined) {
-    parts.push(t('chat.subagents.toolUses', { count: progress.toolUses, unit: progress.toolUses === 1 ? 'tool use' : 'tool uses' }));
+    parts.push(t('chat.subagents.toolUses', { count: progress.toolUses, unit: progress.toolUses === 1 ? t('chat.subagents.toolUseSingular') : t('chat.subagents.toolUsePlural') }));
   }
   if (progress.totalTokens) parts.push(formatTokenCount(progress.totalTokens));
   if (progress.durationMs) parts.push(formatDurationMmSs(Math.round(progress.durationMs / 1000)));
@@ -346,17 +346,17 @@ function getAsyncDisplayStatus(asyncStatus: string | undefined): 'running' | 'co
 
 function getAsyncStatusText(asyncStatus: string | undefined): string {
   switch (asyncStatus) {
-    case 'pending': return t('common.initializing');
-    case 'completed': return ''; // Just show tick icon, no text
+    case 'pending': return t('chat.subagents.initializing');
     case 'error': return t('common.error');
     case 'orphaned': return t('chat.subagents.orphaned');
-    default: return t('chat.subagents.background');
+    // Running and completed cards show only their status icon.
+    default: return '';
   }
 }
 
 function getAsyncStatusAriaLabel(asyncStatus: string | undefined): string {
   switch (asyncStatus) {
-    case 'pending': return t('common.initializing');
+    case 'pending': return t('chat.subagents.initializing');
     case 'completed': return t('common.completed');
     case 'error': return t('common.error');
     case 'orphaned': return t('chat.subagents.orphaned');
@@ -400,7 +400,7 @@ export function updateAsyncSubagentBlock(state: AsyncSubagentState, info: Readon
   state.statusTextEl.setText(getAsyncStatusText(info.asyncStatus));
   const status = displayStatus === 'orphaned' ? 'error' : displayStatus;
   state.statusEl.className = `claudian-subagent-status status-${status}`;
-  state.statusEl.setAttribute('aria-label', t('chat.tools.status', { status: getAsyncStatusAriaLabel(info.asyncStatus) }));
+  state.statusEl.setAttribute('aria-label', t('chat.tools.statusLabel', { status: getAsyncStatusAriaLabel(info.asyncStatus) }));
   state.statusEl.empty();
   if (displayStatus !== 'running') {
     setIcon(state.statusEl, displayStatus === 'orphaned' ? 'alert-circle' : displayStatus === 'error' ? 'x' : 'check');

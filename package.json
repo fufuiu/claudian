@@ -1,6 +1,6 @@
 {
   "name": "claudian",
-  "version": "2.3.15",
+  "version": "2.3.27",
   "description": "Claudian - Claude Code embedded in Obsidian sidebar",
   "main": "main.js",
   "engines": {
@@ -62,7 +62,7 @@
     "typescript": "^6.0.2"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.3.283",
+    "@anthropic-ai/claude-agent-sdk": "0.3.293",
     "@codemirror/commands": "6.10.0",
     "@codemirror/state": "6.5.0",
     "@codemirror/view": "6.38.6",
@@ -71,7 +71,8 @@
     "cross-spawn": "7.0.6",
     "jsonc-parser": "3.3.1",
     "tslib": "^2.8.1",
-    "ws": "8.21.2"
+    "ws": "8.21.2",
+    "yaml": "2.9.0"
   },
   "overrides": {
     "@babel/core": "7.29.7",
@@ -83,7 +84,7 @@
     "body-parser": "2.3.0",
     "browserslist": "4.28.8",
     "fast-uri": "3.1.8",
-    "hono": "4.13.7",
+    "hono": "4.13.13",
     "ip-address": "10.7.2",
     "js-yaml": "4.3.2",
     "moment": "2.31.0",

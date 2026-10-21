@@ -75,6 +75,6 @@ export class InactiveSessionArchiver {
       conversation => isEligible(conversation, this.host.getWorkspaceConversationIds()),
     );
     if (archivedCount === 0) return;
-    new Notice(t('chat.sessions.autoArchived', { count: archivedCount, unit: archivedCount === 1 ? 'session' : 'sessions' }));
+    new Notice(t('chat.sessions.autoArchived', { count: archivedCount, unit: archivedCount === 1 ? t('chat.sessions.sessionSingular') : t('chat.sessions.sessionPlural') }));
   }
 }

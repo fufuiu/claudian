@@ -1,13 +1,14 @@
 import type { BrowserSelectionContext } from '@/core/prompt/browserContext';
 import type { CanvasSelectionContext } from '@/core/prompt/canvasContext';
 import type { EditorSelectionContext } from '@/core/prompt/editorContext';
-import { buildContextFromHistory, buildPromptWithHistoryContext } from '@/core/prompt/historyContext';
+import { buildContextFromHistory } from '@/core/prompt/historyContext';
 import {
   appendLinkedContent,
   appendLinkedContentBody,
   appendSelectionContexts,
   appendSessionReferences,
 } from '@/core/prompt/promptContext';
+import { buildRecoveryPrompt, decodeRecoveryPrompt } from '@/core/prompt/recoveryPrompt';
 
 import type { ProviderLinkedContentContext } from '../../../core/execution';
 import type { ProviderSelectionSnapshot, ProviderSessionReference } from '../../../core/execution/ProviderExecutionRequest';
@@ -37,13 +38,6 @@ export interface OpencodePrompt {
   readonly userText: OpencodeTextRange | null;
 }
 
-export function buildOpencodePromptText(
-  request: OpencodePromptRequest,
-  conversationHistory: ChatMessage[] = [],
-): string {
-  return composeOpencodePromptText(request, conversationHistory).text;
-}
-
 function composeOpencodePromptText(
   request: OpencodePromptRequest,
   conversationHistory: ChatMessage[],
@@ -65,20 +59,16 @@ function composeOpencodePromptText(
 
   prompt = appendSessionReferences(prompt, request.sessionReferences);
 
-  if (conversationHistory.length === 0) {
+  const historyContext = buildContextFromHistory(conversationHistory);
+  if (!historyContext) {
     return { text: prompt, userText: { start: 0, end: request.text.length } };
   }
-  const historyContext = buildContextFromHistory(conversationHistory);
-  const text = buildPromptWithHistoryContext(
-    historyContext,
-    prompt,
-    prompt,
-    conversationHistory,
-  );
+  // Replayed history stays in an envelope that history readers strip.
+  const text = buildRecoveryPrompt(historyContext, prompt, conversationHistory);
   const start = text.length - prompt.length;
   return {
     text,
-    userText: text === prompt || text.endsWith(`\n\nUser: ${prompt}`)
+    userText: decodeRecoveryPrompt(text)?.currentInput != null
       ? { start, end: start + request.text.length }
       : null,
   };
@@ -104,11 +94,4 @@ export function buildOpencodePrompt(
   }
 
   return { blocks, userText };
-}
-
-export function buildOpencodePromptBlocks(
-  request: OpencodePromptRequest,
-  conversationHistory: ChatMessage[] = [],
-): ACPContentBlock[] {
-  return buildOpencodePrompt(request, conversationHistory).blocks;
 }

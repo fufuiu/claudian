@@ -1,5 +1,5 @@
 import type { ProviderExecutionRequest } from '@/core/execution';
-import { buildContextFromHistory, buildPromptWithHistoryContext } from '@/core/prompt/historyContext';
+import { buildContextFromHistory } from '@/core/prompt/historyContext';
 import { buildSystemPrompt, type SystemPromptSettings } from '@/core/prompt/mainAgent';
 import {
   appendLinkedContent,
@@ -7,6 +7,7 @@ import {
   appendSelectionContexts,
   appendSessionReferences,
 } from '@/core/prompt/promptContext';
+import { buildRecoveryPrompt } from '@/core/prompt/recoveryPrompt';
 import type { ChatMessage } from '@/core/types';
 import { getCodexModelOptions } from '@/providers/codex/modelOptions';
 import {
@@ -82,10 +83,10 @@ export function resolveCodexTurnReasoningEffort(
   if (request.configuration.reasoning !== undefined && (effort !== request.configuration.reasoning
     || (modelMetadata && !getCodexReasoningEffortOptions(modelMetadata, codexSettings.enableUltraEffort)
       .some(option => option.value === request.configuration.reasoning)))) {
-    throw new Error(`Codex CLI model "${model}" does not support reasoning effort "${request.configuration.reasoning}".`);
+    throw new Error(`Codex model "${model}" does not support reasoning effort "${request.configuration.reasoning}".`);
   }
   if (!effort) {
-    throw new Error(`Codex CLI model "${model}" has no enabled reasoning efforts.`);
+    throw new Error(`Codex model "${model}" has no enabled reasoning efforts.`);
   }
   return effort;
 }
@@ -186,7 +187,6 @@ export function sandboxModeOf(policy: SandboxPolicy | undefined): string | null 
  */
 export function buildCodexTurnPrompt(
   request: ProviderExecutionRequest,
-  mapRequiredHostPath: (hostPath: string) => string,
   forkCheckpoint?: string,
   replayConversationHistory = false,
 ): string {
@@ -195,7 +195,7 @@ export function buildCodexTurnPrompt(
     .map(block => block.text)
     .join('\n\n');
   const context = request.context;
-  prompt = appendSessionReferences(prompt, context?.sessionReferences, mapRequiredHostPath);
+  prompt = appendSessionReferences(prompt, context?.sessionReferences);
   if (context?.linkedContent) {
     prompt = context.linkedContent.content === undefined
       ? appendLinkedContent(prompt, context.linkedContent.path)
@@ -223,12 +223,8 @@ export function buildCodexTurnPrompt(
   }
   if (replayConversationHistory) {
     const historyContext = buildContextFromHistory(history as ChatMessage[]);
-    return buildPromptWithHistoryContext(
-      historyContext || null,
-      prompt,
-      prompt,
-      history as ChatMessage[],
-    );
+    // The envelope lets history parsing show only the visible input of the replayed turn.
+    return historyContext ? buildRecoveryPrompt(historyContext, prompt, history as ChatMessage[]) : prompt;
   }
   return prompt;
 }

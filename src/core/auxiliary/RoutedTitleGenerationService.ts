@@ -63,7 +63,7 @@ export class RoutedTitleGenerationService implements TitleGenerationService {
     } catch (error) {
       await deliver(conversationId, {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : t('common.unknownError'),
       });
     } finally {
       if (this.activeGenerations.get(conversationId) === generation) {

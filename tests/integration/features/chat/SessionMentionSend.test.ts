@@ -6,30 +6,26 @@ import { testDate } from '@test/helpers/testClock';
 import { Notice } from 'obsidian';
 
 import type { ToolCallInfo } from '@/core/types';
+import { FileContextManager } from '@/features/chat/composer/FileContextManager';
 import { cancelSelectedDestinationTurn } from '@/features/chat/tabs/TabInputEvents';
-import { drainTabForShutdownSnapshot } from '@/features/chat/tabs/TabLifecycle';
+import { VaultMentionDataProvider } from '@/shared/mention/VaultMentionDataProvider';
 
 const id = 'conv-1-source';
 const token = `@[Old title](claudian-session:${id})`;
 const time = testDate().getTime();
 
-function setup() {
+function setup(sourceId = id) {
   const native = createHarness();
   const fixture = createFixture({ getExecutionCoordinator: () => native.coordinator });
-  const write = jest.fn().mockResolvedValue('/tmp/claudian-sessions/snapshot.md');
-  Object.assign(fixture.plugin, {
-    writeSessionSnapshot: write,
-    getSessionSnapshotDirectory: () => '/tmp/claudian-sessions',
-    findConversationAcrossViews: () => null,
-  });
+  Object.assign(fixture.plugin, { findConversationAcrossViews: () => null });
   fixture.plugin.getConversationById.mockResolvedValue({
-    id, title: 'Current title', providerId: 'codex', createdAt: time, lastActivityAt: time,
+    id: sourceId, title: 'Current title', providerId: 'codex', createdAt: time, lastActivityAt: time,
     sessionId: 'native-source', messages: [
       { id: 'u', role: 'user', content: 'verbatim prompt', timestamp: time },
       { id: 'a', role: 'assistant', content: 'final answer', timestamp: time },
     ],
   } as never);
-  return { ...fixture, native, write };
+  return { ...fixture, native };
 }
 
 beforeEach(() => {
@@ -45,6 +41,46 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
+it.each(['f690c4f6-a773-4cb0-a67b-4b08a6ec21b3', 'ses_native-ID.1'])(
+  'sends a native-ID picker selection as a reference the agent reads by id (%s)', async sourceId => {
+    const fixture = setup(sourceId);
+    const app = { vault: { getFiles: () => [], getAllLoadedFiles: () => [] } };
+    const manager = new FileContextManager(new VaultMentionDataProvider(app as never), {
+      getConversationList: () => [{
+        id: sourceId, title: 'Imported session', providerId: 'codex',
+        hasSessionReference: true, isLegacySession: false,
+        createdAt: time, lastActivityAt: time, messageCount: 2, preview: '',
+      }],
+      getCurrentConversationId: () => 'conversation-1',
+    });
+    try {
+      await fixture.native.coordinator.bindConversation({ conversationId: 'conversation-1', providerId: 'claude' });
+      const source = manager.getMentionSource();
+      const match = source.match('@Imported', 9)!;
+      const items = await source.load(match, new AbortController().signal);
+      const item = items.find(item => item.label === 'Imported session');
+      if (!item || item.kind !== 'value') throw new Error('Expected the imported session');
+      const selection = source.select(item, match);
+      if (selection.kind !== 'replace') throw new Error('Expected a session mention');
+      fixture.input.value = `Use ${selection.text}`;
+
+      await fixture.controller.sendMessage();
+
+      const request = fixture.native.backends.get('claude')!.sessions.flatMap(session => session.requests)[0];
+      expect(request.input).toEqual([{ type: 'text', text: 'Use @"Current title"' }]);
+      expect(request.context?.sessionReferences).toEqual([{
+        id: sourceId, title: 'Current title', providerId: 'codex', updatedAt: new Date(time).toISOString(),
+      }]);
+      // No snapshot file is written, so the request grants no extra readable directory.
+      expect(request.configuration).not.toHaveProperty('readableRoots');
+    } finally {
+      manager.destroy();
+      await fixture.native.coordinator.dispose();
+      await fixture.native.registry.dispose();
+    }
+  },
+);
+
 it.each([false, true])('resolves current titles once and carries snapshots through real handoff (queued: %s)', async queued => {
   const fixture = setup();
   await fixture.native.coordinator.bindConversation({ conversationId: 'conversation-1', providerId: 'claude' });
@@ -54,28 +90,25 @@ it.each([false, true])('resolves current titles once and carries snapshots throu
     await fixture.controller.sendMessage();
     if (queued) {
       await releaseTurn();
-      fixture.controller.resumeQueuedTurnAfterIntentAdmission();
+      fixture.controller.queue.scheduleContinuation();
       await new Promise(resolve => setTimeout(resolve, 20));
     }
     const request = fixture.native.backends.get('claude')!.sessions.flatMap(session => session.requests)[0];
     expect(request.input).toEqual([{ type: 'text', text: 'Use @"Current title" and @"Current title"' }]);
     expect(request.context?.sessionReferences).toEqual([{
-      id, title: 'Current title', providerId: 'codex', updatedAt: new Date(time).toISOString(), snapshotPath: '/tmp/claudian-sessions/snapshot.md',
+      id, title: 'Current title', providerId: 'codex', updatedAt: new Date(time).toISOString(),
     }]);
-    expect(request.configuration.readableRoots).toEqual(['/tmp/claudian-sessions']);
-    expect(fixture.write).toHaveBeenCalledTimes(1);
-    expect(fixture.write.mock.calls[0][1]).toContain('## T1 user\nverbatim prompt\n\n## T1 assistant\nfinal answer');
+    expect(fixture.plugin.getConversationById).toHaveBeenCalledTimes(1);
     const user = fixture.state.messages.find(message => message.role === 'user');
     expect(user?.displayContent).toBe('Use @"Current title" and @"Current title"');
     expect(user?.executionInput?.context?.sessionReferences).toEqual(request.context?.sessionReferences);
   } finally { await fixture.native.coordinator.dispose(); await fixture.native.registry.dispose(); }
 });
 
-it.each(['hydrate', 'write'])('preserves the original token draft when %s fails', async failure => {
+it('preserves the original token draft when the session cannot be loaded', async () => {
   const fixture = setup();
   try {
-    if (failure === 'hydrate') fixture.plugin.getConversationById.mockResolvedValue(null);
-    else fixture.write.mockRejectedValue(new Error('disk full'));
+    fixture.plugin.getConversationById.mockResolvedValue(null);
     fixture.input.value = token;
     await fixture.controller.sendMessage();
     expect(fixture.input.value).toBe(token);
@@ -98,19 +131,6 @@ it('does not send to a replaced conversation while hydration is pending', async 
   expect(fixture.input.value).toBe(token);
   expect(fixture.native.backends.get('claude')!.sessions).toHaveLength(0);
   await fixture.native.coordinator.dispose(); await fixture.native.registry.dispose();
-});
-
-it('uses hydrated repository history while an open source tab is still loading', async () => {
-  const fixture = setup();
-  await fixture.native.coordinator.bindConversation({ conversationId: 'conversation-1', providerId: 'claude' });
-  Object.assign(fixture.plugin, { findConversationAcrossViews: () => ({ tabId: 'source-tab', view: {
-    getTabManager: () => ({ getTab: () => ({ conversationId: id, hydrationState: 'loading', state: { messages: [], isStreaming: false } }) }),
-  } }) });
-  try {
-    fixture.input.value = token;
-    await fixture.controller.sendMessage();
-    expect(fixture.write.mock.calls[0][1]).toContain('## T1 user\nverbatim prompt');
-  } finally { await fixture.native.coordinator.dispose(); await fixture.native.registry.dispose(); }
 });
 
 it('restores a plain follow-up queued during failed snapshot preparation', async () => {
@@ -205,7 +225,7 @@ it('withdraws an expired async answer waiting behind busy-main reference prepara
   }
 });
 
-it('cancels and drains queued snapshot preparation before tab shutdown finishes', async () => {
+it('cancels and drains queued snapshot preparation before plugin shutdown finishes', async () => {
   const fixture = setup();
   const session = fixture.session;
   const gate = deferred<any>();
@@ -216,14 +236,12 @@ it('cancels and drains queued snapshot preparation before tab shutdown finishes'
   const sending = fixture.controller.sendMessage();
   await waitForCall(fixture.plugin.getConversationById);
   let stopped = false;
-  const draining = drainTabForShutdownSnapshot({ session, state: fixture.state,
-    controllers: { inputController: fixture.controller }, executionCoordinator: fixture.native.coordinator } as never)
-    .then(() => { stopped = true; });
+  session.beginShutdown();
+  const draining = fixture.controller.drainSessionMentionPreparations().then(() => { stopped = true; });
   await new Promise(resolve => setTimeout(resolve, 0));
   expect(stopped).toBe(false);
   gate.resolve(source);
   await Promise.all([sending, draining]);
-  expect(fixture.write).not.toHaveBeenCalled();
   expect(fixture.state.queuedMessage).toBeNull();
   expect(fixture.input.value).toBe(token);
   await fixture.native.coordinator.dispose(); await fixture.native.registry.dispose();
@@ -393,7 +411,8 @@ it.each(['withdraw', 'cancel', 'initialization'])('restores token text and refre
     await releaseTurn();
     fixture.deps.ensureExecutionInitialized = async () => true;
     await fixture.controller.sendMessage();
-    expect(fixture.write).toHaveBeenCalledTimes(2);
+    // The retry resolves the reference again instead of reusing the withdrawn one.
+    expect(fixture.plugin.getConversationById).toHaveBeenCalledTimes(2);
     const request = fixture.native.backends.get('claude')!.sessions.flatMap(session => session.requests)[0];
     expect(request.input).toEqual([{ type: 'text', text: '@"Current title"' + suffix }]);
     expect(request.context?.sessionReferences?.[0].id).toBe(id);
@@ -404,8 +423,9 @@ it.each([false, true])('retains queued priority and captured selections through 
   holdNativeTurns();
   jest.useFakeTimers();
   const fixture = setup();
-  const writing = deferred<string>();
-  fixture.write.mockReturnValue(writing.promise);
+  const source = await fixture.plugin.getConversationById(id);
+  const loading = deferred<any>();
+  fixture.plugin.getConversationById.mockClear().mockReturnValue(loading.promise);
   await fixture.native.coordinator.bindConversation({ conversationId: 'conversation-1', providerId: 'claude' });
   fixture.input.value = 'active turn';
   const active = fixture.controller.sendMessage();
@@ -436,7 +456,7 @@ it.each([false, true])('retains queued priority and captured selections through 
   fixture.selectionSources.canvas.getContext.mockReturnValue(different ? newer.canvas : null);
   fixture.input.value = token;
   const mention = fixture.controller.sendMessage();
-  await waitForCall(fixture.write);
+  await waitForCall(fixture.plugin.getConversationById);
   older.editor.selectedText = newer.editor.selectedText = 'live editor changed';
   older.browser.selectedText = newer.browser.selectedText = 'live browser changed';
   older.canvas.nodeIds.push('live-node');
@@ -444,7 +464,7 @@ it.each([false, true])('retains queued priority and captured selections through 
   try {
     finishNativeTurn(session, 0);
     await active;
-    writing.resolve('/tmp/claudian-sessions/snapshot.md');
+    loading.resolve(source);
     // Drain promise continuations while deliberately withholding the queued timer.
     for (let tick = 0; tick < 100; tick++) await Promise.resolve();
     expect(session.requests).toHaveLength(1);
@@ -461,7 +481,7 @@ it.each([false, true])('retains queued priority and captured selections through 
   } finally {
     fixture.controller.cancelStreaming();
     fixture.controller.queue.clear();
-    writing.resolve('/tmp/claudian-sessions/snapshot.md');
+    loading.resolve(source);
     session.runs.forEach(run => run.cancel());
     await Promise.allSettled([active, mention]);
     await fixture.native.coordinator.dispose(); await fixture.native.registry.dispose();
@@ -469,7 +489,7 @@ it.each([false, true])('retains queued priority and captured selections through 
   }
 });
 
-it.each(['cancel', 'withdraw', 'discard', 'pause', 'shutdown', 'replacement'] as const)(
+it.each(['cancel', 'withdraw', 'discard', 'shutdown', 'replacement'] as const)(
   'retains scheduled queued input through %s without a stray handoff', async action => {
     jest.useFakeTimers();
     const fixture = setup();
@@ -481,26 +501,19 @@ it.each(['cancel', 'withdraw', 'discard', 'pause', 'shutdown', 'replacement'] as
       fixture.input.value = token;
       await fixture.controller.sendMessage();
       await releaseTurn();
-      fixture.controller.resumeQueuedTurnAfterIntentAdmission();
+      fixture.controller.queue.scheduleContinuation();
       switch (action) {
         case 'cancel': fixture.controller.cancelStreaming(); break;
         case 'withdraw': fixture.controller.queue.withdrawToComposer(); break;
         case 'discard': fixture.controller.queue.clear(); break;
-        case 'pause': session.pauseIntentAdmission(); break;
         case 'replacement': fixture.state.currentConversationId = 'replacement'; break;
-        case 'shutdown': await drainTabForShutdownSnapshot({ session, state: fixture.state,
-          controllers: { inputController: fixture.controller }, executionCoordinator: fixture.native.coordinator } as never); break;
+        case 'shutdown': session.beginShutdown(); break;
       }
       await jest.advanceTimersByTimeAsync(0);
       expect(fixture.native.backends.get('claude')!.sessions.flatMap(value => value.requests).length).toBe(0);
       expect(fixture.input.value).toBe(['cancel', 'withdraw', 'replacement'].includes(action) ? token : '');
-      if (action === 'pause') {
-        session.resumeIntentAdmission();
-        fixture.controller.resumeQueuedTurnAfterIntentAdmission();
-        await jest.advanceTimersByTimeAsync(0);
-      }
       expect(fixture.native.backends.get('claude')!.sessions.flatMap(value => value.requests)
-        .map(request => request.context?.sessionReferences?.[0].id)).toEqual(action === 'pause' ? [id] : []);
+        .map(request => request.context?.sessionReferences?.[0].id)).toEqual([]);
     } finally {
       fixture.controller.queue.clear();
       await fixture.native.coordinator.dispose(); await fixture.native.registry.dispose();

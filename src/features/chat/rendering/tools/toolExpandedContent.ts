@@ -34,17 +34,20 @@ export function renderBashContent(
   }
 }
 
-/** Strips `N→` line-number gutters only when every leading line carries the next consecutive number. */
+/** Strips `N→` line-number gutters only when every non-terminal line carries the next consecutive number. */
 function stripLegacyLineNumberGutters(result: string): string {
   const lines = result.split(/\r?\n/);
-  const first = lines[0]?.match(/^\s*(\d+)→/);
-  const second = lines[1]?.match(/^\s*(\d+)→/);
-  if (!first || (lines.length > 1 && lines[1] !== '' && Number(second?.[1]) !== Number(first[1]) + 1)) return result;
+  const trailingNewline = lines.length > 1 && lines[lines.length - 1] === '';
+  const contentLines = trailingNewline ? lines.slice(0, -1) : lines;
+  const first = contentLines[0]?.match(/^\s*(\d+)→/);
+  if (!first) return result;
   const start = Number(first[1]);
-  return lines.map((line, index) => {
+  const stripped = contentLines.map((line, index) => {
     const gutter = line.match(/^\s*(\d+)→/);
-    return gutter && Number(gutter[1]) === start + index ? line.slice(gutter[0].length) : line;
-  }).join('\n');
+    return gutter && Number(gutter[1]) === start + index ? line.slice(gutter[0].length) : null;
+  });
+  if (stripped.some(line => line === null)) return result;
+  return [...stripped, ...(trailingNewline ? [''] : [])].join('\n');
 }
 
 export function renderReadExpanded(container: HTMLElement, result: string, resultFormat: string | undefined): void {
@@ -53,7 +56,7 @@ export function renderReadExpanded(container: HTMLElement, result: string, resul
 
 export function renderFileSearchExpanded(container: HTMLElement, result: string): void {
   if (!result.trim()) {
-    renderEmptyResult(container, t('chat.tools.noMatch'));
+    renderEmptyResult(container, t('chat.tools.noMatches'));
     return;
   }
   renderLinesExpanded(container, result, 15, true);
@@ -111,7 +114,7 @@ export function renderAgentLifecycleExpanded(
   const message = getInputText(input, 'message');
   if (target || message) {
     const inputEl = container.createDiv({ cls: 'claudian-tool-lines' });
-    if (target) inputEl.createDiv({ cls: 'claudian-tool-line', text: t('chat.tools.agent', { agent: target }) });
+    if (target) inputEl.createDiv({ cls: 'claudian-tool-line', text: t('chat.agent', { agent: target }) });
     if (message) inputEl.createDiv({ cls: 'claudian-tool-line claudian-tool-line-wrap', text: message });
   }
   if (!result) {

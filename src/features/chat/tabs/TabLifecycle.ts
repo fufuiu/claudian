@@ -1,7 +1,5 @@
-import { Notice } from 'obsidian';
-
 import type { ChatFeatureHost } from '@/features/chat/ChatFeatureHost';
-import type { AssembledTabRuntime, TabRuntimeResourceState } from '@/features/chat/tabs/types';
+import type { AssembledTabRuntime } from '@/features/chat/tabs/types';
 import { t } from '@/i18n/i18n';
 
 export interface TabRuntimeCleanupFailure {
@@ -9,7 +7,7 @@ export interface TabRuntimeCleanupFailure {
   readonly error: unknown;
 }
 
-export interface TabRuntimeResourceOwner extends TabRuntimeResourceState {
+export interface TabRuntimeResourceOwner {
   dispose(): Promise<readonly TabRuntimeCleanupFailure[]>;
 }
 
@@ -31,12 +29,6 @@ export function registerTabRuntimeResourceOwner(
     throw new Error('Tab runtime already has a registered resource owner');
   }
   tabRuntimeResourceOwners.set(tab, resourceOwner);
-}
-
-export function isClosingLifecycleState(
-  state: AssembledTabRuntime['lifecycleState'],
-): boolean {
-  return state === 'closing';
 }
 
 export function commitProvisionalTab(tab: AssembledTabRuntime): void {
@@ -76,7 +68,6 @@ export class TabRuntimeTeardownError extends Error {
 }
 
 export interface TabShutdownDrainResult {
-  readonly cancelledActiveTurn: boolean;
   readonly cleanupFailures: readonly TabRuntimeCleanupFailure[];
 }
 
@@ -106,28 +97,11 @@ export async function drainTabForShutdownSnapshot(
 async function drainTabForShutdownSnapshotOnce(
   tab: AssembledTabRuntime,
 ): Promise<TabShutdownDrainResult> {
-  tab.session.pauseIntentAdmission();
-  tab.session.pauseBackgroundWork();
   const cleanupFailures: TabRuntimeCleanupFailure[] = [];
-  const cancelledActiveTurn = tab.session.turns.isActive;
-  await captureTeardownFailure(
-    cleanupFailures,
-    'tab turn cancellation',
-    () => { tab.session.cancelTurn('shutdown', { dismissInteractions: true }); },
-  );
-  if (cancelledActiveTurn) await tab.session.turns.drain().catch(() => undefined);
-  await captureTeardownFailure(
-    cleanupFailures,
-    'tab session mention preparation',
-    () => tab.controllers.inputController.drainSessionMentionPreparations(),
-  );
-  await captureTeardownFailure(
-    cleanupFailures,
-    'tab background work',
-    () => tab.session.awaitBackgroundWork(),
-  );
+  await captureTeardownFailure(cleanupFailures, 'conversation shell creation',
+    () => tab.session.runtime.awaitIdentitySettlement());
 
-  return { cancelledActiveTurn, cleanupFailures };
+  return { cleanupFailures };
 }
 
 export async function destroyTab(tab: AssembledTabRuntime): Promise<void> {
@@ -144,21 +118,7 @@ export async function destroyTab(tab: AssembledTabRuntime): Promise<void> {
 
 async function destroyTabOnce(tab: AssembledTabRuntime): Promise<void> {
   tab.session.beginClose();
-  const drainResult = await drainTabForShutdownSnapshot(tab);
-  tab.session.sealIdentity();
-  const cleanupFailures = [...drainResult.cleanupFailures];
-  const { cancelledActiveTurn } = drainResult;
-
-  await captureTeardownFailure(cleanupFailures, 'tab subagent activity', () => {
-    tab.services.subagentManager.orphanAllActive();
-  });
-  if (tab.state.currentConversationId) {
-    try {
-      await tab.controllers.conversationController.save(cancelledActiveTurn);
-    } catch {
-      new Notice(t('chat.errors.backgroundSave'));
-    }
-  }
+  const cleanupFailures: TabRuntimeCleanupFailure[] = [];
   await captureTeardownFailure(
     cleanupFailures,
     'tab resume dropdown',

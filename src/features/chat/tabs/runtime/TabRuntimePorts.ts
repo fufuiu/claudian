@@ -19,7 +19,7 @@ export interface TabRuntimePorts {
 export function buildTabRuntimePorts(
   dom: TabDOMElements,
   ui: TabUIComponents,
-  controllerBundle: TabRuntimeControllerBundle,
+  controllerBundle: Pick<TabRuntimeControllerBundle, 'controllers' | 'renderer'>,
   plugin: ChatFeatureHost,
   getRuntime: () => AssembledTabRuntime,
 ): TabRuntimePorts {
@@ -31,6 +31,7 @@ export function buildTabRuntimePorts(
     placement: createTabPlacementPort(
       dom,
       hostEl => controllers.sideChatController.setCollapsedHost(hostEl),
+      hostEl => controllers.sideChatController.setFullHeightHost(hostEl),
     ),
     refreshProviderControls: () => {
       refreshTabContextUsage(getRuntime(), plugin);
@@ -44,7 +45,7 @@ export function buildTabRuntimePorts(
     },
     refreshMessageTimestamps: () => {
       renderer.refreshMessageTimestamps();
-      controllers.sideChatController.runtime?.renderer.refreshMessageTimestamps();
+      controllers.sideChatController.runtime?.renderer?.refreshMessageTimestamps();
     },
   };
 }
@@ -54,8 +55,21 @@ export function createTabComposerPort(
   inputEl: TabDOMElements['inputEl'],
   ui: Pick<TabUIComponents, 'toolbarMenus' | 'composerDropdown' | 'fileContextManager'>,
 ): TabComposerPort {
+  let previousFocus: HTMLElement | null = null;
+  const isFocused = () => inputEl.contains(inputEl.ownerDocument.activeElement);
   return {
     focus: () => inputEl.focus(),
+    isFocused,
+    isVisible: () => inputEl.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }),
+    toggleFocus: () => {
+      if (isFocused()) {
+        if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+        else inputEl.focus();
+        return;
+      }
+      previousFocus = inputEl.ownerDocument.activeElement as HTMLElement | null;
+      inputEl.focus();
+    },
     appendText: (text) => {
       if (!text) return false;
       const currentValue = inputEl.value;
@@ -86,6 +100,7 @@ export function createTabComposerPort(
 export function createTabPlacementPort(
   dom: Pick<TabDOMElements, 'contentEl' | 'inputComposerEl' | 'messagesWrapperEl' | 'inputEl'>,
   setSideChatChipHost: (hostEl: HTMLElement | null) => void,
+  setSideChatFullHeightHost: (hostEl: HTMLElement | null) => void,
 ): TabPlacementPort {
   const { contentEl, inputComposerEl: composerEl, messagesWrapperEl: transcriptEl } = dom;
   return {
@@ -110,6 +125,7 @@ export function createTabPlacementPort(
       };
     },
     setSideChatChipHost,
+    setSideChatFullHeightHost,
   };
 }
 

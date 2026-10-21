@@ -3,12 +3,11 @@ import { testClock } from '@test/helpers/testClock';
 import { Notice, TFile, TFolder } from 'obsidian';
 
 import type { ConversationRepository } from '@/app/conversations/ConversationRepository';
-import { SessionSnapshotStore } from '@/app/conversations/SessionSnapshotStore';
 import { PinnedLinkedContentPathCoordinator } from '@/app/settings/PinnedLinkedContentPathCoordinator';
 import { ConversationPersistenceStore } from '@/app/storage/ConversationPersistenceStore';
 import type { SessionMetadataReadResult } from '@/app/storage/SessionStorage';
 import { SessionStorage } from '@/app/storage/SessionStorage';
-import { SharedStorageService } from '@/app/storage/SharedStorageService';
+import type { SharedStorageService } from '@/app/storage/SharedStorageService';
 import type { ClaudianChatFeatureHost } from '@/composition/ClaudianFeatureHosts';
 import type { ClaudianViews } from '@/composition/ClaudianViews';
 import { getDeviceSessionsPath } from '@/core/bootstrap/storagePaths';
@@ -17,8 +16,10 @@ import { ProviderRegistry } from '@/core/providers/ProviderRegistry';
 import { ProviderSettingsCoordinator } from '@/core/providers/ProviderSettingsCoordinator';
 import { ProviderWorkspaceRegistry } from '@/core/providers/ProviderWorkspaceRegistry';
 import { isVersionedRuntimeInputFingerprint } from '@/core/providers/settings/RuntimeInputFingerprint';
+import { LoopbackSessionToolServer } from '@/core/session-tools/LoopbackSessionToolServer';
 import { TOOL_SUBAGENT } from '@/core/tools/toolNames';
 import { type ClaudianSettings, type Conversation, type SessionMetadata, VIEW_TYPE_CLAUDIAN } from '@/core/types';
+import { SessionMessagingService } from '@/features/chat/session-messaging/SessionMessagingService';
 import { ZenModeController } from '@/features/chat/zen/ZenModeController';
 import * as sdkSession from '@/providers/claude/history/ClaudeHistoryStore';
 import { CodexModelCatalogCoordinator } from '@/providers/codex/runtime/CodexModelCatalogCoordinator';
@@ -360,34 +361,6 @@ describe('ClaudianPlugin', () => {
       expect(files.has(inputPath)).toBe(mode !== 'run');
     });
 
-    it('defers snapshot maintenance, aborts it on unload, and joins it before shutdown', async () => {
-      let entered!: () => void;
-      const started = new Promise<void>(resolve => { entered = resolve; });
-      let release!: () => void;
-      const gate = new Promise<void>(resolve => { release = resolve; });
-      let signal: AbortSignal | undefined;
-      const sweep = jest.spyOn(SessionSnapshotStore.prototype, 'sweep').mockImplementation(async received => {
-        signal = received;
-        entered();
-        await gate;
-      });
-      try {
-        await plugin.onload();
-        expect(sweep).not.toHaveBeenCalled();
-        for (const [ready] of mockApp.workspace.onLayoutReady.mock.calls) ready();
-        await started;
-        plugin.onunload();
-        expect(signal?.aborted).toBe(true);
-        let stopped = false;
-        const shutdown = (plugin as any).applicationShutdownPromise.then(() => { stopped = true; });
-        await Promise.resolve();
-        expect(stopped).toBe(false);
-        release();
-        await shutdown;
-        expect(stopped).toBe(true);
-      } finally { release(); sweep.mockRestore(); }
-    });
-
     it('joins an admitted input deletion on unload and leaves remaining inputs for the next launch', async () => {
       const inputs = ['.claudian/sessions/first.inputs.json', '.claudian/sessions/second.inputs.json'];
       const files = installVaultFiles(Object.fromEntries(inputs.map(file => [file, '{}'])));
@@ -475,7 +448,7 @@ describe('ClaudianPlugin', () => {
       expect(plugin.registerEvent).toHaveBeenCalledWith({ id: 'workspace-event' });
     });
 
-    it('does not preload legacy tab metadata before a view claims migration', async () => {
+    it('completes onload without waiting for the history scan or loading session metadata', async () => {
       type EmptyMetadataScan = {
         records: [];
         complete: true;
@@ -500,12 +473,6 @@ describe('ClaudianPlugin', () => {
           needsMigration: false,
           source: 'device',
         });
-      (plugin.loadData as jest.Mock).mockResolvedValue({
-        tabManagerState: {
-          openTabs: [{ tabId: 'tab-1', conversationId: restoredMetadata.id }],
-          activeTabId: 'tab-1',
-        },
-      });
 
       const onloadPromise = plugin.onload();
       const completedBeforeHistoryScan = await completesWhilePending(onloadPromise);
@@ -542,40 +509,6 @@ describe('ClaudianPlugin', () => {
         .toBe(restoredMetadata.title);
       expect(loadSourceSpy).toHaveBeenCalledWith(restoredMetadata.id);
       loadSourceSpy.mockRestore();
-    });
-
-    it('discards stale global tab state after a view-scoped restore succeeds', async () => {
-      const clearLegacyState = jest.spyOn(
-        SharedStorageService.prototype,
-        'clearTabManagerState',
-      ).mockResolvedValue(undefined);
-      (plugin.loadData as jest.Mock).mockResolvedValue({
-        tabManagerState: {
-          activeTabId: 'legacy-tab',
-          openTabs: [{ conversationId: null, tabId: 'legacy-tab' }],
-        },
-      });
-      mockApp.workspace.getLeavesOfType.mockReturnValue([{
-        getViewState: jest.fn().mockReturnValue({
-          state: {
-            tabWorkspace: {
-              version: 1,
-              activeTabId: 'view-tab',
-              openTabs: [{ conversationId: null, tabId: 'view-tab' }],
-            },
-          },
-        }),
-      }]);
-      await plugin.onload();
-
-      expect(clearLegacyState).toHaveBeenCalledTimes(1);
-      await expect(chatHostOf(plugin).claimLegacyTabManagerState()).resolves.toBeNull();
-      expect(clearLegacyState).toHaveBeenCalledTimes(1);
-
-      await chatHostOf(plugin).completeLegacyTabManagerStateMigration();
-
-      expect(clearLegacyState).toHaveBeenCalledTimes(1);
-      clearLegacyState.mockRestore();
     });
 
     it('publishes the remaining conversation metadata after layout readiness', async () => {
@@ -787,12 +720,6 @@ describe('ClaudianPlugin', () => {
         }
         return '';
       });
-      (plugin.loadData as jest.Mock).mockResolvedValue({
-        tabManagerState: {
-          openTabs: [{ tabId: 'tab-1', conversationId: restoredMetadata.id }],
-          activeTabId: 'tab-1',
-        },
-      });
       const loadSpy = jest.spyOn(SessionStorage.prototype, 'loadMetadata')
         .mockResolvedValue(restoredMetadata);
       const listSpy = jest.spyOn(SessionStorage.prototype, 'scan')
@@ -821,6 +748,7 @@ describe('ClaudianPlugin', () => {
       expect(restored).toEqual(expect.objectContaining({
         sessionId: null,
         providerState: {
+          bindingRetired: true,
           previousProviderSessionIds: ['restored-provider-session-id'],
         },
         resumeAtMessageId: 'restored-message-id',
@@ -828,6 +756,7 @@ describe('ClaudianPlugin', () => {
       expect(deferred).toEqual(expect.objectContaining({
         sessionId: null,
         providerState: {
+          bindingRetired: true,
           previousProviderSessionIds: ['deferred-provider-session-id'],
         },
         resumeAtMessageId: 'deferred-message-id',
@@ -853,12 +782,6 @@ describe('ClaudianPlugin', () => {
         sessionId: 'deferred-session-id',
         providerState: { providerSessionId: 'deferred-provider-session-id' },
       };
-      (plugin.loadData as jest.Mock).mockResolvedValue({
-        tabManagerState: {
-          openTabs: [{ tabId: 'tab-1', conversationId: restoredMetadata.id }],
-          activeTabId: 'tab-1',
-        },
-      });
       const loadSpy = jest.spyOn(SessionStorage.prototype, 'loadMetadata')
         .mockResolvedValue(restoredMetadata);
       const listSpy = jest.spyOn(SessionStorage.prototype, 'scan')
@@ -876,14 +799,12 @@ describe('ClaudianPlugin', () => {
       );
       const claudeReconciler = ProviderRegistry.getSettingsReconciler('claude');
       const reconcileSpy = jest.spyOn(claudeReconciler, 'reconcileModelWithEnvironment')
-        .mockReturnValue({ changed: true, invalidatedConversations: [] });
-      claudeReconciler.environmentSessionPolicy = 'reload';
+        .mockReturnValue({ changed: true, invalidatedConversations: [], sessionPolicy: 'reload' });
 
       try {
         await plugin.onload();
         await (plugin as any).sessionMetadata.loadRemaining();
       } finally {
-        delete claudeReconciler.environmentSessionPolicy;
         reconcileSpy.mockRestore();
         loadSpy.mockRestore();
         listSpy.mockRestore();
@@ -961,10 +882,12 @@ describe('ClaudianPlugin', () => {
 
       expect(first?.sessionId).toBeNull();
       expect(first?.providerState).toEqual({
+        bindingRetired: true,
         previousProviderSessionIds: ['first-provider-session-id'],
       });
       expect(later?.sessionId).toBeNull();
       expect(later?.providerState).toEqual({
+        bindingRetired: true,
         previousProviderSessionIds: ['later-provider-session-id'],
       });
       expect(pendingGeneration).toEqual(expect.any(Number));
@@ -1282,10 +1205,12 @@ describe('ClaudianPlugin', () => {
 
       expect(restartedConversation?.sessionId).toBeNull();
       expect(restartedConversation?.providerState).toEqual({
+        bindingRetired: true,
         previousProviderSessionIds: ['restart-provider-session-id'],
       });
       expect(persistedMetadata.sessionId).toBeNull();
       expect(persistedMetadata.providerState).toEqual({
+        bindingRetired: true,
         previousProviderSessionIds: ['restart-provider-session-id'],
       });
       expect(restartedSettings.pendingProviderSessionInvalidations?.claude).toBeUndefined();
@@ -1378,8 +1303,87 @@ describe('ClaudianPlugin', () => {
       expect(disposeSpy).toHaveBeenCalledTimes(1);
     });
 
-    it('drains views before disposing execution and workspace resources', async () => {
+    it('fences session tools synchronously and joins the service before provider teardown', async () => {
       await plugin.onload();
+      const host = (plugin as unknown as { chatHost: ClaudianChatFeatureHost }).chatHost;
+      const binding = host.bindSessionTools('caller');
+      let release!: () => void;
+      const pending = new Promise<void>(resolve => { release = resolve; });
+      const dispose = jest.spyOn(SessionMessagingService.prototype, 'dispose').mockReturnValueOnce(pending);
+      const disposeWorkspaces = jest.spyOn(ProviderWorkspaceRegistry, 'disposeInitialized');
+      plugin.onunload();
+      try {
+        await expect(binding.port.list({ includeProviders: false, limit: 50 }, new AbortController().signal)).rejects.toThrow('shutting down');
+        await waitForCondition(() => dispose.mock.calls.length > 0);
+        expect(disposeWorkspaces).not.toHaveBeenCalled();
+      } finally {
+        release();
+        await (plugin as unknown as { applicationShutdownPromise: Promise<void> }).applicationShutdownPromise;
+        dispose.mockRestore();
+        disposeWorkspaces.mockRestore();
+      }
+    });
+
+    it.each([false, true])('closes the session endpoint after workspace cleanup settles (failure: %s)', async fails => {
+      await plugin.onload();
+      expect(plugin.providerHost.sessionToolEndpoint).toBeInstanceOf(LoopbackSessionToolServer);
+      let finishWorkspace!: () => void;
+      const workspaceCleanup = new Promise<void>((resolve, reject) => {
+        finishWorkspace = () => fails ? reject(new Error('workspace cleanup failed')) : resolve();
+      });
+      const disposeWorkspaces = jest.spyOn(ProviderWorkspaceRegistry, 'disposeInitialized')
+        .mockReturnValueOnce(workspaceCleanup);
+      let finishClose!: () => void;
+      const close = jest.spyOn(LoopbackSessionToolServer.prototype, 'close')
+        .mockImplementationOnce(() => new Promise<void>(resolve => { finishClose = resolve; }));
+      let stopped = false;
+      plugin.onunload();
+      const shutdown = (plugin as any).applicationShutdownPromise.then(() => { stopped = true; });
+      try {
+        await waitForCondition(() => disposeWorkspaces.mock.calls.length > 0);
+        expect(close).not.toHaveBeenCalled();
+        finishWorkspace();
+        await waitForCondition(() => close.mock.calls.length > 0);
+        expect(stopped).toBe(false);
+        finishClose();
+        await shutdown;
+        expect(stopped).toBe(true);
+        expect(close).toHaveBeenCalledTimes(1);
+      } finally {
+        finishWorkspace();
+        finishClose?.();
+        close.mockRestore();
+        disposeWorkspaces.mockRestore();
+      }
+    });
+
+    it('releases workspaces and the endpoint when native archive cleanup fails', async () => {
+      await plugin.onload();
+      const failure = new Error('archive cleanup failed');
+      jest.spyOn((plugin as any).nativeSessionArchives, 'dispose').mockRejectedValueOnce(failure);
+      const disposeWorkspaces = jest.spyOn(ProviderWorkspaceRegistry, 'disposeInitialized');
+      const close = jest.spyOn(LoopbackSessionToolServer.prototype, 'close');
+
+      plugin.onunload();
+      await expect((plugin as any).applicationShutdownPromise).rejects.toBe(failure);
+
+      expect(disposeWorkspaces).toHaveBeenCalledTimes(1);
+      expect(close).toHaveBeenCalledTimes(1);
+      expect(disposeWorkspaces.mock.invocationCallOrder[0]).toBeLessThan(close.mock.invocationCallOrder[0]);
+    });
+
+    it('drains views and detached sessions before disposing execution and workspace resources', async () => {
+      await plugin.onload();
+      const pool = chatHostOf().sessionRuntimes;
+      const { attachment } = pool.acquire({ conversationId: 'detached', providerId: 'claude', draftModel: null }, { reveal: () => undefined });
+      let finishSession!: () => void;
+      let turnSignal!: AbortSignal;
+      const turn = attachment.runtime.turns.run(signal => {
+        turnSignal = signal;
+        return new Promise<void>(resolve => { finishSession = resolve; });
+      });
+      pool.release(attachment);
+      const disposeSession = jest.spyOn(attachment.runtime, 'dispose');
       let resolveViewDrain!: () => void;
       const viewDrain = new Promise<void>((resolve) => {
         resolveViewDrain = resolve;
@@ -1401,6 +1405,8 @@ describe('ClaudianPlugin', () => {
       ).mockResolvedValue(undefined);
 
       plugin.onunload();
+      expect(turnSignal.aborted).toBe(true);
+      expect(attachment.runtime.acceptsIntents).toBe(false);
       await Promise.resolve();
 
       expect(prepareForPluginUnload).toHaveBeenCalledTimes(1);
@@ -1408,6 +1414,11 @@ describe('ClaudianPlugin', () => {
       expect(disposeWorkspaces).not.toHaveBeenCalled();
 
       resolveViewDrain();
+      await waitForCondition(() => disposeSession.mock.calls.length > 0);
+      expect(disposeExecution).not.toHaveBeenCalled();
+      expect(disposeWorkspaces).not.toHaveBeenCalled();
+      finishSession();
+      await turn;
       await (plugin as any).applicationShutdownPromise;
 
       expect(disposeExecution).toHaveBeenCalledTimes(1);
@@ -2149,6 +2160,7 @@ describe('ClaudianPlugin', () => {
       expect(invalidateSpy).toHaveBeenCalledTimes(1);
       expect(chatHostOf(plugin).getConversationSync(live.id)?.sessionId).toBeNull();
       expect(chatHostOf(plugin).getConversationSync(live.id)?.providerState).toEqual({
+        bindingRetired: true,
         previousProviderSessionIds: [
           'live-previous-session',
           'live-provider-session',
@@ -2157,6 +2169,7 @@ describe('ClaudianPlugin', () => {
       expect(live.resumeAtMessageId).toBe('live-resume-message');
       expect(chatHostOf(plugin).getConversationSync(deferredMetadata.id)?.sessionId).toBeNull();
       expect(chatHostOf(plugin).getConversationSync(deferredMetadata.id)?.providerState).toEqual({
+        bindingRetired: true,
         previousProviderSessionIds: [
           'deferred-previous-session',
           'deferred-provider-session',
@@ -2377,8 +2390,7 @@ describe('ClaudianPlugin', () => {
 
       const claudeReconciler = ProviderRegistry.getSettingsReconciler('claude');
       const reconcileSpy = jest.spyOn(claudeReconciler, 'reconcileModelWithEnvironment')
-        .mockReturnValue({ changed: true, invalidatedConversations: [] });
-      claudeReconciler.environmentSessionPolicy = 'reload';
+        .mockReturnValue({ changed: true, invalidatedConversations: [], sessionPolicy: 'reload' });
       const stagePendingSpy = jest.spyOn(runtimeSettingsOf(plugin), 'stagePendingSessionInvalidations');
       const getTabManager = jest.fn();
       const mockView = {
@@ -2397,7 +2409,6 @@ describe('ClaudianPlugin', () => {
           ].join('\n'),
         );
       } finally {
-        delete claudeReconciler.environmentSessionPolicy;
         reconcileSpy.mockRestore();
       }
 
@@ -2414,7 +2425,10 @@ describe('ClaudianPlugin', () => {
       }));
       expect(invalidated).toEqual(expect.objectContaining({
         sessionId: null,
-        providerState: undefined,
+        providerState: {
+          nativeConversationContextEstablished: false,
+          previousSegments: [{ threadId: 'invalidated-thread' }],
+        },
       }));
       expect(getTabManager).not.toHaveBeenCalled();
     });
@@ -2466,7 +2480,7 @@ describe('ClaudianPlugin', () => {
   });
 
   describe('applyProviderRuntimeSettings', () => {
-    it('persists a CLI fingerprint and restart-safe session invalidation atomically', async () => {
+    it('persists a session-scope fingerprint and restart-safe session invalidation atomically', async () => {
       const settingsPath = '.claudian/claudian-settings.json';
       const deferredMetadata = {
         id: 'runtime-settings-restart-session',
@@ -2497,6 +2511,7 @@ describe('ClaudianPlugin', () => {
       await plugin.providerHost.applyProviderRuntimeSettings(['codex'], (settings) => {
         updateCodexProviderSettings(settings, {
           cliPathsByHost: { [hostnameKey]: '/custom/codex' },
+          environmentVariables: 'OPENAI_BASE_URL=https://restart.example.test',
         });
       });
 
@@ -2544,14 +2559,18 @@ describe('ClaudianPlugin', () => {
       loadSourceSpy.mockRestore();
       saveMetadataSpy.mockRestore();
 
+      const historyOnlyState = {
+        nativeConversationContextEstablished: false,
+        previousSegments: [{ threadId: 'codex-thread-id' }],
+      };
       expect(restartedConversation).toEqual(expect.objectContaining({
         sessionId: null,
-        providerState: undefined,
+        providerState: historyOnlyState,
       }));
       expect(persistedMetadata).toEqual(expect.objectContaining({
         sessionId: null,
+        providerState: historyOnlyState,
       }));
-      expect(persistedMetadata).not.toHaveProperty('providerState');
       expect(restartedSettings.providerConfigs.codex.environmentHash).toBe(fingerprint);
       expect(restartedSettings.pendingProviderSessionInvalidations?.codex).toBeUndefined();
       expect(invalidationWrites).toHaveLength(1);
@@ -2605,6 +2624,7 @@ describe('ClaudianPlugin', () => {
         (settings) => {
           updateCodexProviderSettings(settings, {
             cliPathsByHost: { [hostnameKey]: '/custom/post-commit-codex' },
+            environmentVariables: 'OPENAI_BASE_URL=https://post-commit.example.test',
           });
         },
         () => {
@@ -2621,7 +2641,10 @@ describe('ClaudianPlugin', () => {
       )).toBe(true);
       expect(chatHostOf(plugin).getConversationSync(conversation.id)).toEqual(expect.objectContaining({
         sessionId: null,
-        providerState: undefined,
+        providerState: {
+          nativeConversationContextEstablished: false,
+          previousSegments: [{ threadId: 'post-commit-thread' }],
+        },
       }));
       expect(plugin.settings.pendingProviderSessionInvalidations.codex).toBeUndefined();
     });
@@ -2645,22 +2668,50 @@ describe('ClaudianPlugin', () => {
     });
   });
 
-  describe('command callback', () => {
-    it('reveals existing view when command is executed', async () => {
+  describe('toggle chat view command', () => {
+    async function runToggle() {
+      const command = getRegisteredCommand('open-view');
+      expect(command.name).toBe('切换聊天面板');
+      await command.callback();
+    }
+
+    it('reveals and focuses a chat in the main area instead of closing it', async () => {
       await plugin.onload();
-      const mockLeaf = { id: 'existing' };
-      mockApp.workspace.getLeavesOfType.mockReturnValue([mockLeaf]);
+      const rootSplit = {};
+      Object.assign(mockApp.workspace, { leftSplit: { collapsed: false }, rightSplit: { collapsed: false }, rootSplit });
+      const leaf = {
+        getRoot: () => rootSplit,
+        view: { getTabManager: jest.fn(), focusActiveInput: jest.fn(), containerEl: { isShown: () => true } },
+      };
+      mockApp.workspace.getLeavesOfType.mockReturnValue([leaf]);
 
-      expect(plugin.addCommand).toHaveBeenCalledWith({
-        id: 'open-view',
-        name: '打开聊天面板',
-        callback: expect.any(Function),
-      });
-      const commandConfig = getRegisteredCommand('open-view');
-      await commandConfig.callback();
+      await runToggle();
 
-      expect(mockApp.workspace.revealLeaf).toHaveBeenCalledWith(mockLeaf);
+      expect(mockApp.workspace.revealLeaf).toHaveBeenCalledWith(leaf);
+      expect(leaf.view.focusActiveInput).toHaveBeenCalledTimes(1);
+      expect(mockApp.workspace.detachLeavesOfType).not.toHaveBeenCalled();
     });
+
+    it('opens a chat when none exists', async () => {
+      await plugin.onload();
+      const rightLeaf = { setViewState: jest.fn().mockResolvedValue(undefined) };
+      mockApp.workspace.getRightLeaf.mockReturnValue(rightLeaf);
+
+      await runToggle();
+
+      expect(rightLeaf.setViewState).toHaveBeenCalledWith({ type: VIEW_TYPE_CLAUDIAN, active: true });
+      expect(mockApp.workspace.revealLeaf).toHaveBeenCalledWith(rightLeaf);
+    });
+  });
+
+  it.each([
+    ['focus-zen-mode-input', 'Toggle chat input focus'],
+    ['toggle-zen-mode-history', 'Toggle zen mode history'],
+  ])('registers %s for hotkey assignment', async (id, name) => {
+    await plugin.onload();
+    const command = getRegisteredCommand(id);
+    expect(command.name).toBe(name);
+    expect(command.checkCallback(true)).toBe(false);
   });
 
   describe('new-tab command', () => {
@@ -2675,7 +2726,7 @@ describe('ClaudianPlugin', () => {
         };
         return {
           getTabManager: () => manager,
-          isDualPaneMode: () => false,
+          getCompactTabManager: () => manager,
           prepareForPluginUnload: async () => undefined,
           manager,
         };
@@ -2694,15 +2745,13 @@ describe('ClaudianPlugin', () => {
       expect(chatHostOf(plugin).getView()).toBe(first.view);
     });
 
-    it('delegates New to the active dual-pane navigation policy', async () => {
+    it('delegates New to the focused view layout', async () => {
       await plugin.onload();
 
-      const handleNewConversationCommand = jest.fn().mockResolvedValue(true);
-      const createNewTab = jest.fn().mockResolvedValue(undefined);
+      const startNewConversation = jest.fn().mockResolvedValue(undefined);
       jest.spyOn(viewsOf(plugin), 'getView').mockReturnValue({
-        createNewTab,
         getTabManager: jest.fn().mockReturnValue({}),
-        handleNewConversationCommand,
+        startNewConversation,
       } as any);
 
       const command = getRegisteredCommand('new-tab');
@@ -2710,15 +2759,14 @@ describe('ClaudianPlugin', () => {
       expect(command.checkCallback(false)).toBe(true);
       await new Promise<void>((resolve) => setImmediate(resolve));
 
-      expect(handleNewConversationCommand).toHaveBeenCalledTimes(1);
-      expect(createNewTab).not.toHaveBeenCalled();
+      expect(startNewConversation).toHaveBeenCalledTimes(1);
     });
 
     it('keeps replace and close tab commands out of dual mode', async () => {
       await plugin.onload();
 
       jest.spyOn(viewsOf(plugin), 'getView').mockReturnValue({
-        isDualPaneMode: () => true,
+        getCompactTabManager: () => null,
         getTabManager: jest.fn().mockReturnValue({
           getActiveTab: jest.fn().mockReturnValue({ state: { isStreaming: false } }),
         }),
@@ -2729,6 +2777,29 @@ describe('ClaudianPlugin', () => {
       expect(replaceCommand.name).toBe('替换当前对话');
       expect(replaceCommand.checkCallback(true)).toBe(false);
       expect(closeCommand.checkCallback(true)).toBe(false);
+    });
+
+    it('offers tab renaming only while the compact tab bar is visible', async () => {
+      await plugin.onload();
+
+      const renameActiveTab = jest.fn().mockReturnValue(true);
+      const view = {
+        isTabBarVisible: jest.fn().mockReturnValue(true),
+        renameActiveTab,
+        getTabManager: jest.fn().mockReturnValue({}),
+      };
+      jest.spyOn(viewsOf(plugin), 'getView').mockReturnValue(view as any);
+      const command = getRegisteredCommand('rename-current-tab');
+
+      expect(command.name).toBe('Rename current tab');
+      expect(command.checkCallback(true)).toBe(true);
+      expect(renameActiveTab).not.toHaveBeenCalled();
+      expect(command.checkCallback(false)).toBe(true);
+      expect(renameActiveTab).toHaveBeenCalledTimes(1);
+
+      view.isTabBarVisible.mockReturnValue(false);
+      expect(command.checkCallback(true)).toBe(false);
+      expect(renameActiveTab).toHaveBeenCalledTimes(1);
     });
 
     it('opens the view without creating a duplicate tab when no tab layout is persisted', async () => {
@@ -3088,6 +3159,32 @@ describe('ClaudianPlugin', () => {
       expect(first).toHaveBeenCalledTimes(2);
       expect(second).toHaveBeenCalledTimes(2);
     });
+
+    it('deletes an idle session whose detached model is being evicted', async () => {
+      await plugin.onload();
+      const conv = await chatHostOf(plugin).createConversation();
+      const pool = chatHostOf(plugin).sessionRuntimes;
+      const { attachment } = pool.acquire({ conversationId: conv.id, providerId: conv.providerId, draftModel: null }, { reveal: () => undefined });
+      const runtime = attachment.runtime;
+      await runtime.ensureModel();
+      const resetConversationTabs = jest.fn(async () => {
+        // The tab owner detaches the session, then yields while tearing down its presentation.
+        pool.release(attachment);
+        for (let tick = 0; tick < 5; tick++) await new Promise(resolve => setTimeout(resolve, 0));
+      });
+      mockApp.workspace.getLeavesOfType.mockReturnValue([{
+        view: { notifyConversationListChanged: jest.fn(), getTabManager: () => ({ resetConversationTabs }) },
+      }]);
+
+      const settled = jest.fn();
+      void chatHostOf(plugin).deleteConversation(conv.id).then(settled, settled);
+      await waitForCondition(() => settled.mock.calls.length > 0);
+
+      expect(settled).toHaveBeenCalledWith(undefined);
+      expect(pool.get(conv.id)).toBeNull();
+      expect(runtime.isDisposed).toBe(true);
+      expect(chatHostOf(plugin).getConversationList().find(item => item.id === conv.id)).toBeUndefined();
+    });
   });
 
   describe('handleMissingProviderSession', () => {
@@ -3141,6 +3238,7 @@ describe('ClaudianPlugin', () => {
       const preserved = chatHostOf(plugin).getConversationSync(conv.id);
       expect(preserved?.sessionId).toBeNull();
       expect(preserved?.providerState).toEqual({
+        bindingRetired: true,
         previousProviderSessionIds: ['temporarily-inaccessible'],
       });
     });
@@ -3325,7 +3423,7 @@ describe('ClaudianPlugin', () => {
       await chatHostOf(plugin).conversationLifecycle.setArchived(conversation.id, true);
 
       expect(chatHostOf(plugin).getConversationSync(conversation.id)?.isArchived).toBe(true);
-      expect(Notice).toHaveBeenCalledWith('Codex CLI 无法归档或恢复会话：codex unavailable');
+      expect(Notice).toHaveBeenCalledWith('Codex 无法归档或恢复会话：codex unavailable');
     });
 
     it('does not initialize providers without native session archive', async () => {
@@ -3342,13 +3440,32 @@ describe('ClaudianPlugin', () => {
   });
 
   describe('Linked content path events', () => {
+    async function detachedLinkedContentSession() {
+      mockApp.vault.getAbstractFileByPath = jest.fn().mockReturnValue(null);
+      const host = chatHostOf();
+      const conversation = await host.createConversation({ linkedContentPath: 'Projects/Old/Plan.md' });
+      const { attachment } = host.sessionRuntimes.acquire({ conversationId: conversation.id, providerId: conversation.providerId, draftModel: null }, { reveal: () => undefined });
+      const model = attachment.runtime.model;
+      await model.hydrate();
+      void attachment.runtime.turns.run(signal => new Promise<void>(resolve => signal.addEventListener('abort', () => resolve())));
+      host.sessionRuntimes.release(attachment);
+      const linked = model.linkedContentController;
+      jest.spyOn(linked, 'handleCreated');
+      jest.spyOn(linked, 'handleDeleted');
+      jest.spyOn(linked, 'handleRenamed');
+      return linked;
+    }
+
     it('coalesces vault refreshes while delivering every path event immediately', async () => {
       await plugin.onload();
-      const view = { handleLinkedContentCreated: jest.fn(), notifyConversationListChanged: jest.fn() };
+      const linked = await detachedLinkedContentSession();
+      const second = await detachedLinkedContentSession();
+      const view = { notifyConversationListChanged: jest.fn() };
       jest.spyOn(viewsOf(plugin), 'getAllViews').mockReturnValue([view as any]);
       const listener = mockApp.vault.on.mock.calls.find((call: unknown[]) => call[0] === 'create')![1];
       for (let index = 0; index < 20; index++) listener(new (TFile as any)(`note-${index}.md`));
-      expect(view.handleLinkedContentCreated).toHaveBeenCalledTimes(20);
+      expect(linked.handleCreated).toHaveBeenCalledTimes(20);
+      expect(second.handleCreated).toHaveBeenCalledTimes(20);
       expect(view.notifyConversationListChanged).not.toHaveBeenCalled();
       await new Promise(resolve => window.setTimeout(resolve, 75));
       expect(view.notifyConversationListChanged).toHaveBeenCalledTimes(1);
@@ -3416,9 +3533,8 @@ describe('ClaudianPlugin', () => {
 
     it('invalidates open history projections when unpinned targets disappear or reappear', async () => {
       await plugin.onload();
+      const linked = await detachedLinkedContentSession();
       const view = {
-        handleLinkedContentCreated: jest.fn(),
-        handleLinkedContentDeleted: jest.fn(),
         notifyConversationListChanged: jest.fn(),
       };
       jest.spyOn(viewsOf(plugin), 'getAllViews').mockReturnValue([view as any]);
@@ -3427,7 +3543,7 @@ describe('ClaudianPlugin', () => {
         new (TFile as any)('Notes/Unpinned.md'),
       );
 
-      expect(view.handleLinkedContentDeleted).toHaveBeenCalledWith(
+      expect(linked.handleDeleted).toHaveBeenCalledWith(
         'Notes/Unpinned.md',
         false,
       );
@@ -3440,7 +3556,7 @@ describe('ClaudianPlugin', () => {
       expect(createListener).toEqual(expect.any(Function));
       createListener(new (TFile as any)('Notes/Unpinned.md'));
 
-      expect(view.handleLinkedContentCreated).toHaveBeenCalledWith('Notes/Unpinned.md');
+      expect(linked.handleCreated).toHaveBeenCalledWith('Notes/Unpinned.md');
       await new Promise(resolve => window.setTimeout(resolve, 75));
       expect(view.notifyConversationListChanged).toHaveBeenCalledTimes(2);
     });
@@ -3461,8 +3577,8 @@ describe('ClaudianPlugin', () => {
 
     it('invalidates deleted targets even when pinned-settings cleanup fails', async () => {
       await plugin.onload();
+      const linked = await detachedLinkedContentSession();
       const view = {
-        handleLinkedContentDeleted: jest.fn(),
         notifyConversationListChanged: jest.fn(),
       };
       jest.spyOn(viewsOf(plugin), 'getAllViews').mockReturnValue([view as any]);
@@ -3473,7 +3589,7 @@ describe('ClaudianPlugin', () => {
         new (TFile as any)('Notes/Unpinned.md'),
       )).rejects.toThrow('settings unavailable');
 
-      expect(view.handleLinkedContentDeleted).toHaveBeenCalledWith(
+      expect(linked.handleDeleted).toHaveBeenCalledWith(
         'Notes/Unpinned.md',
         false,
       );

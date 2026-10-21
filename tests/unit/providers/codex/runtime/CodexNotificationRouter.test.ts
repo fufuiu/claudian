@@ -1,3 +1,4 @@
+import { encodeRecoveryPrompt } from '@/core/prompt/recoveryPrompt';
 import type { StreamChunk } from '@/core/types';
 import { CodexNotificationRouter } from '@/providers/codex/runtime/CodexNotificationRouter';
 
@@ -1312,7 +1313,7 @@ describe('CodexNotificationRouter', () => {
           changes: [{
             path: '/workspace/note.md',
             type: 'add',
-            diff: '@@ -0,0 +1 @@\n+hello',
+            diff: 'hello\n',
           }],
           status: 'inProgress',
         },
@@ -1326,7 +1327,7 @@ describe('CodexNotificationRouter', () => {
           changes: [{
             path: '/workspace/note.md',
             type: 'add',
-            diff: '@@ -0,0 +1 @@\n+hello',
+            diff: 'hello\n',
           }],
           status: 'completed',
         },
@@ -1551,7 +1552,7 @@ describe('CodexNotificationRouter', () => {
             changes: [{
               path: '/workspace/same.md',
               type: 'add',
-              diff: '@@ -0,0 +1 @@\n+canonical',
+              diff: 'canonical\n',
             }],
             status: method === 'item/started' ? 'inProgress' : 'completed',
           },
@@ -3526,7 +3527,7 @@ describe('CodexNotificationRouter', () => {
       const changes = [{
         path: '/workspace/note.md',
         type: 'add',
-        diff: '@@ -0,0 +1 @@\n+hello',
+        diff: 'hello\n',
       }];
 
       router.handleNotification('rawResponseItem/completed', {
@@ -4648,6 +4649,63 @@ describe('CodexNotificationRouter', () => {
   });
 
   describe('dynamicToolCall', () => {
+    it.each(['claudian_list_destinations', 'claudian_send_message'])('normalizes live session tool %s and retains its native name', tool => {
+      router.handleNotification('item/started', { item: { type: 'dynamicToolCall', id: 'session-tool', namespace: 'claudian_sessions', tool, arguments: {}, status: 'inProgress' } });
+      expect(chunks).toEqual([expect.objectContaining({ type: 'tool_use', name: tool, providerPayload: { rawName: tool } })]);
+    });
+
+    it('coalesces a projected session call with its script envelope under the neutral name', () => {
+      router.handleNotification('rawResponseItem/completed', { item: {
+        type: 'custom_tool_call', name: 'exec', call_id: 'session-script',
+        input: 'text(await tools.claudian_sessions__claudian_list_destinations({}));',
+      } });
+      const item = { type: 'dynamicToolCall', id: 'session-native', namespace: 'claudian_sessions',
+        tool: 'claudian_list_destinations', arguments: {} };
+      router.handleNotification('item/started', { item: { ...item, status: 'inProgress' } });
+      router.handleNotification('item/completed', { item: { ...item, status: 'completed',
+        contentItems: [{ type: 'inputText', text: '[]' }], success: true } });
+      router.handleNotification('rawResponseItem/completed', { item: {
+        type: 'custom_tool_call_output', call_id: 'session-script', output: '[]',
+      } });
+      router.handleNotification('turn/completed', { turn: { id: 'turn', status: 'completed' } });
+      expect(chunks.filter(chunk => chunk.type === 'tool_use')).toEqual([expect.objectContaining({
+        name: 'claudian_list_destinations', providerPayload: { rawName: 'claudian_list_destinations' },
+      })]);
+      expect(chunks.map(chunk => chunk.type)).toEqual(['tool_use', 'tool_result', 'done']);
+    });
+
+    it('retains the namespaced session name when only a script fallback is available', () => {
+      router.handleNotification('rawResponseItem/completed', { item: {
+        type: 'custom_tool_call', name: 'exec', call_id: 'session-script',
+        input: 'text(await tools.claudian_sessions__claudian_list_destinations({}));',
+      } });
+      router.handleNotification('rawResponseItem/completed', { item: {
+        type: 'custom_tool_call_output', call_id: 'session-script', output: '[]',
+      } });
+      router.handleNotification('turn/completed', { turn: { id: 'turn', status: 'completed' } });
+      expect(chunks.filter(chunk => chunk.type === 'tool_use')).toEqual([expect.objectContaining({
+        name: 'claudian_list_destinations', providerPayload: { rawName: 'claudian_sessions__claudian_list_destinations' },
+      })]);
+    });
+
+    it('coalesces a namespaced script tool with its native dynamic lifecycle before the answer', () => {
+      router.handleNotification('rawResponseItem/completed', { item: {
+        type: 'custom_tool_call', name: 'exec', call_id: 'dependencies-script',
+        input: 'text(await tools.codex_app__load_workspace_dependencies({}));',
+      } });
+      const item = { type: 'dynamicToolCall', id: 'dependencies-native', namespace: 'codex_app',
+        tool: 'load_workspace_dependencies', arguments: {} };
+      router.handleNotification('item/started', { item: { ...item, status: 'inProgress' } });
+      router.handleNotification('item/completed', { item: { ...item, status: 'completed',
+        contentItems: [{ type: 'inputText', text: 'Available.' }], success: true } });
+      router.handleNotification('rawResponseItem/completed', { item: {
+        type: 'custom_tool_call_output', call_id: 'dependencies-script', output: 'Available.',
+      } });
+      router.handleNotification('item/agentMessage/delta', { itemId: 'answer', delta: 'Ready.' });
+      router.handleNotification('turn/completed', { turn: { id: 'turn', status: 'completed' } });
+      expect(chunks.map(chunk => chunk.type)).toEqual(['tool_use', 'tool_result', 'text', 'done']);
+    });
+
     it('maps canonical dynamic tool lifecycle events to tool chunks', () => {
       router.handleNotification('item/started', {
         item: {
@@ -4940,6 +4998,28 @@ describe('CodexNotificationRouter', () => {
 
       expect(chunks).toEqual([
         { type: 'user_message_start', itemId: 'u1', content: 'what was in this img?' },
+      ]);
+    });
+
+    it('shows only the current input of a replayed-history prompt with image markup', () => {
+      const replay = encodeRecoveryPrompt('User: Embed a chart\n\nAssistant: Use <image href="chart.png"></image>.', 'Make it 64px');
+      router.handleNotification('item/started', {
+        item: {
+          type: 'userMessage',
+          id: 'u1',
+          content: [
+            { type: 'text', text: '<image name=[Image #1] path="/tmp/1-image-1.png">' },
+            { type: 'localImage', path: '/tmp/1-image-1.png' },
+            { type: 'text', text: '</image>' },
+            { type: 'text', text: replay },
+          ],
+        },
+        threadId: 't1',
+        turnId: 'turn1',
+      });
+
+      expect(chunks).toEqual([
+        { type: 'user_message_start', itemId: 'u1', content: 'Make it 64px' },
       ]);
     });
 

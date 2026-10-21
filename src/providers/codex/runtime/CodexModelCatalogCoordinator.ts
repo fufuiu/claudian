@@ -10,7 +10,6 @@ import { CodexMetadataTransitionGate } from '../metadata/CodexMetadataTransition
 import type { CodexDiscoveredModel } from '../models';
 import {
   getCodexProviderSettings,
-  normalizeCodexVisibleModels,
   updateCodexProviderSettings,
 } from '../settings';
 import {
@@ -175,14 +174,14 @@ export class CodexModelCatalogCoordinator {
           kind: 'completed',
           models: this.getCachedCatalog(),
           refreshed: false,
-          diagnostics: discoveryResult.diagnostics ?? 'Codex CLI app-server returned no visible models',
+          diagnostics: discoveryResult.diagnostics ?? 'Codex app-server returned no visible models',
         };
       }
 
       if (!catalogFingerprint) {
         throw catalogFingerprintError instanceof Error
           ? catalogFingerprintError
-          : new Error('Codex CLI catalog fingerprint resolution failed');
+          : new Error('Codex catalog fingerprint resolution failed');
       }
       const persistedResult = await this.#persistCatalog(
         discoveryResult.models,
@@ -214,7 +213,7 @@ export class CodexModelCatalogCoordinator {
       if (!this.#isCurrentRefresh(generation)) {
         return this.#supersededResult();
       }
-      const message = error instanceof Error ? error.message : 'Codex CLI model discovery failed';
+      const message = error instanceof Error ? error.message : 'Codex model discovery failed';
       return {
         kind: 'completed',
         models: this.getCachedCatalog(),
@@ -264,33 +263,27 @@ export class CodexModelCatalogCoordinator {
       }
       const currentSettings = getCodexProviderSettings(settings);
       const currentModels = currentSettings.discoveredModels;
-      const visibleModels = normalizeCodexVisibleModels(
-        currentSettings.visibleModels,
-        models,
-      );
       const catalogChanged = !sameCatalog(currentModels, models);
-      const visibilityChanged = !sameCatalog(currentSettings.visibleModels, visibleModels);
       const fingerprintChanged = currentSettings.catalogFingerprint !== fingerprint;
       const timestampChanged = currentSettings.catalogTimestamp !== timestamp;
 
-      if (catalogChanged || visibilityChanged || fingerprintChanged || timestampChanged) {
+      if (catalogChanged || fingerprintChanged || timestampChanged) {
         updateCodexProviderSettings(settings, {
           discoveredModels: models,
-          visibleModels,
+          visibleModels: currentSettings.visibleModels,
           catalogFingerprint: fingerprint,
           catalogTimestamp: timestamp,
         });
       }
 
       const selectionChanged = ProviderSettingsCoordinator.normalizeAllModelVariants(settings);
-      const selectorStateChanged = visibilityChanged || selectionChanged;
       const shouldPersist = catalogChanged
-        || selectorStateChanged
+        || selectionChanged
         || fingerprintChanged
         || timestampChanged;
       refreshResult = {
         accepted: true,
-        changed: catalogChanged || selectorStateChanged,
+        changed: catalogChanged || selectionChanged,
         persistedSettingsChanged: shouldPersist,
       };
       return shouldPersist;

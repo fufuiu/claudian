@@ -1,3 +1,5 @@
+import { t } from '@/i18n/i18n';
+
 import type { StreamChunk } from '../../../core/types';
 import type { PiRPCRecord, PiRPCTransport } from './PiRPCTransport';
 
@@ -72,7 +74,7 @@ export class PiExtensionUIBridge {
         this.renderer?.notify(request);
         this.emit?.({
           type: 'notice',
-          content: getString(request.message) ?? getString(request.title) ?? 'Pi extension notification.',
+          content: getString(request.message) ?? getString(request.title) ?? t('settings.pi.notification'),
           level: 'info',
         });
         return true;

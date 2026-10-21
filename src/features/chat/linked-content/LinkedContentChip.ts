@@ -16,7 +16,7 @@ export class LinkedContentChip {
       return;
     }
     this.infoRow.setLinkedContent({
-      label: content.missing ? t('chat.linkedContent.missingLabel', { label: content.label }) : content.label,
+      label: content.missing ? `${content.label} · ${t('chat.linkedContent.missing')}` : content.label,
       icon: content.icon,
       ariaLabel: content.missing
         ? t('chat.linkedContent.missingPath', { path: content.path })

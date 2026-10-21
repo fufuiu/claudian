@@ -54,7 +54,7 @@ export class ComposerInfoRow {
       const removeEl = this.linkedSlotEl.createEl('button', {
         cls: 'claudian-input-info-linked-remove',
         text: '×',
-        attr: { type: 'button', 'aria-label': t('chat.composer.removeItem', { label }) },
+        attr: { type: 'button', 'aria-label': t('chat.removeItem', { item: label }) },
       });
       removeEl.addEventListener('click', item.onRemove);
     }

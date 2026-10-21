@@ -1,5 +1,6 @@
 import { Notice, type Plugin } from 'obsidian';
 
+import type { ProviderExecutionLifecycleRegistry } from '@/core/execution/ProviderExecutionLifecycleRegistry';
 import { StartupProfiler } from '@/core/performance/StartupProfiler';
 import type { ProviderRegistry } from '@/core/providers/ProviderRegistry';
 import type { ProviderSettingsCoordinator } from '@/core/providers/ProviderSettingsCoordinator';
@@ -19,7 +20,6 @@ import { PinnedLinkedContentPathCoordinator } from '../settings/PinnedLinkedCont
 import { RuntimeSettingsCoordinator } from '../settings/RuntimeSettingsCoordinator';
 import { SettingsCoordinator } from '../settings/SettingsCoordinator';
 import { SharedStorageService } from '../storage/SharedStorageService';
-import { TabWorkspaceMigrationCoordinator } from '../storage/TabWorkspaceMigrationCoordinator';
 
 export type StartupProviderCatalog = Pick<
   typeof ProviderRegistry,
@@ -34,6 +34,7 @@ export type StartupProviderSettings = Pick<
   typeof ProviderSettingsCoordinator,
   | 'getProviderSettingsSnapshot'
   | 'invalidateConversationSessions'
+  | 'preservesConversationSession'
   | 'normalizeAllModelVariants'
   | 'normalizeProviderSelection'
   | 'persistProjectedProviderState'
@@ -41,14 +42,14 @@ export type StartupProviderSettings = Pick<
 >;
 
 export interface ApplicationStartupOptions {
-  /** Plugin data owner for settings files and the legacy tab snapshot. */
+  /** Plugin owner of the settings files and session storage. */
   readonly plugin: Plugin;
   readonly defaultSettings: Readonly<ClaudianSettings>;
   readonly providers: StartupProviderCatalog;
   readonly providerSettings: StartupProviderSettings;
+  readonly executionLifecycle: Pick<ProviderExecutionLifecycleRegistry, 'markSessionsInvalidated'>;
   /** Defers sessions not selected for restoration to the background metadata scan. */
   readonly deferNonRestoredSessionMetadata: boolean;
-  isChatView(value: unknown): boolean;
   isUnloading(): boolean;
   publishCommittedSettings(
     settings: Readonly<ClaudianSettings>,
@@ -73,7 +74,6 @@ export interface ApplicationDomains {
   readonly nativeSessionArchives: NativeSessionArchiveSync;
   readonly runtimeSettings: RuntimeSettingsCoordinator;
   readonly sessionMetadata: SessionMetadataLoader;
-  readonly tabWorkspaceMigration: TabWorkspaceMigrationCoordinator;
 }
 
 /**
@@ -85,11 +85,6 @@ export async function startApplication(options: ApplicationStartupOptions): Prom
   const { plugin, providers, providerSettings } = options;
   const workspace = plugin.app.workspace;
   const storage = new SharedStorageService(plugin, options.defaultSettings);
-  const tabWorkspaceMigration = new TabWorkspaceMigrationCoordinator(
-    storage,
-    workspace,
-    value => options.isChatView(value),
-  );
   const { claudian } = await storage.initialize();
   const settings: ClaudianSettings = {
     ...structuredClone(options.defaultSettings),
@@ -118,6 +113,7 @@ export async function startApplication(options: ApplicationStartupOptions): Prom
   const runtimeSettings: RuntimeSettingsCoordinator = new RuntimeSettingsCoordinator({
     settings: settingsCoordinator,
     conversations: conversationRepository,
+    executionLifecycle: options.executionLifecycle,
     getSettings: () => settings,
     // Consulted only by post-startup commits, after the loader below exists.
     canCompleteInvalidations: (): boolean => sessionMetadata.hasLoadedAll && !options.isUnloading(),
@@ -236,6 +232,5 @@ export async function startApplication(options: ApplicationStartupOptions): Prom
     nativeSessionArchives,
     runtimeSettings,
     sessionMetadata,
-    tabWorkspaceMigration,
   };
 }

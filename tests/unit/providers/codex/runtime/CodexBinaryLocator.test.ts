@@ -10,6 +10,7 @@ import { CodexCLIResolver } from '@/providers/codex/runtime/CodexCLIResolver';
 
 describe('CodexBinaryLocator', () => {
   let tempDir: string;
+  const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform')!;
   const originalEnvironment = {
     CODEX_INSTALL_DIR: process.env.CODEX_INSTALL_DIR,
     HOME: process.env.HOME,
@@ -44,6 +45,7 @@ describe('CodexBinaryLocator', () => {
 
   afterEach(() => {
     jest.restoreAllMocks();
+    Object.defineProperty(process, 'platform', originalPlatform);
     restoreEnvironmentVariable('CODEX_INSTALL_DIR');
     restoreEnvironmentVariable('HOME');
     restoreEnvironmentVariable('LOCALAPPDATA');
@@ -135,10 +137,23 @@ describe('CodexBinaryLocator', () => {
     expect(findCodexBinaryPath('', 'win32')).toBe(first);
   });
 
-  it('honors configured files and quoted runtime PATH before a Windows desktop runtime', () => {
+  it('resolves Windows CLI settings, install overrides, inherited PATH, and automatic installs in priority order', () => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
     process.env.LOCALAPPDATA = tempDir;
-    delete process.env.CODEX_INSTALL_DIR;
-    createCompleteWindowsCodexRuntime(path.join(tempDir, 'OpenAI', 'Codex', 'bin', 'hash'));
+    const desktop = createCompleteWindowsCodexRuntime(path.join(tempDir, 'OpenAI', 'Codex', 'bin', 'hash'));
+    const standalone = createCompleteWindowsCodexRuntime(path.join(tempDir, 'Programs', 'OpenAI', 'Codex', 'bin'));
+    const overrideDir = path.join(tempDir, 'install override');
+    const override = createCompleteWindowsCodexRuntime(overrideDir);
+    process.env.CODEX_INSTALL_DIR = `"${overrideDir}"`;
+    const firstPathDir = path.join(tempDir, 'npm');
+    const secondPathDir = path.join(tempDir, 'other-cli');
+    fs.mkdirSync(firstPathDir);
+    fs.mkdirSync(secondPathDir);
+    const firstPathBinary = path.join(firstPathDir, 'codex.cmd');
+    const secondPathBinary = path.join(secondPathDir, 'codex.exe');
+    fs.writeFileSync(firstPathBinary, '');
+    fs.writeFileSync(secondPathBinary, '');
+    process.env.PATH = `"${path.join(tempDir, 'missing')}";"${firstPathDir}";"${secondPathDir}"`;
     const explicitDir = path.join(tempDir, 'my tools');
     fs.mkdirSync(explicitDir);
     const shim = path.join(explicitDir, 'codex.cmd');
@@ -147,8 +162,43 @@ describe('CodexBinaryLocator', () => {
     fs.writeFileSync(configured, '');
     const runtimePath = `"${path.join(tempDir, 'missing')}";"${explicitDir}"`;
 
-    expect(findCodexBinaryPath(runtimePath, 'win32')).toBe(shim);
-    expect(resolveCodexCLIPath(configured, '', `PATH=${runtimePath}`, { method: 'native-windows' })).toBe(configured);
+    expect(resolveCodexCLIPath(configured, '', `PATH='${runtimePath}'`, { method: 'native-windows' })).toBe(configured);
+    expect(resolveCodexCLIPath('', '', `PATH='${runtimePath}'`, { method: 'native-windows' })).toBe(shim);
+    expect(resolveCodexCLIPath('', '', '', { method: 'native-windows' })).toBe(override);
+
+    // An incomplete install override must not hide the user's PATH installation.
+    fs.unlinkSync(path.join(overrideDir, 'codex-code-mode-host.exe'));
+    expect(resolveCodexCLIPath('', '', '', { method: 'native-windows' })).toBe(firstPathBinary);
+    process.env.PATH = `${secondPathDir};${firstPathDir}`;
+    expect(resolveCodexCLIPath('', '', '', { method: 'native-windows' })).toBe(secondPathBinary);
+
+    process.env.PATH = path.join(tempDir, 'missing');
+    expect(resolveCodexCLIPath('', '', '', { method: 'native-windows' })).toBe(standalone);
+    fs.unlinkSync(standalone);
+    expect(resolveCodexCLIPath('', '', '', { method: 'native-windows' })).toBe(desktop);
+  });
+
+  it.each(['darwin', 'linux'] as const)('prefers inherited PATH over automatic %s installations', (platform) => {
+    // A POSIX PATH cannot contain the drive colon of a Windows temporary directory.
+    // Model only the filesystem boundary while retaining the real PATH parsing and lookup order.
+    process.env.HOME = '/mock/home';
+    const automaticDir = platform === 'darwin'
+      ? path.join('/mock/home', 'Applications', 'Codex.app', 'Contents', 'Resources')
+      : path.join('/mock/home', '.local', 'bin');
+    const pathDir = '/mock/chosen-cli';
+    const pathBinary = path.join(pathDir, 'codex');
+    const nativeFile = path.join(tempDir, 'codex');
+    fs.writeFileSync(nativeFile, '');
+    const fileStat = fs.statSync(nativeFile);
+    jest.spyOn(jest.requireActual<typeof fs>('fs'), 'statSync').mockImplementation(candidate => {
+      if ([pathBinary, path.join(automaticDir, 'codex')].includes(path.normalize(String(candidate)))) return fileStat;
+      throw Object.assign(new Error('No fixture'), { code: 'ENOENT' });
+    });
+    process.env.PATH = pathDir;
+
+    expect(findCodexBinaryPath('', platform)).toBe(pathBinary);
+    process.env.PATH = '';
+    expect(findCodexBinaryPath('', platform)).toBe(path.join(automaticDir, 'codex'));
   });
 
   it('falls back from an incomplete install override to a complete desktop runtime', () => {

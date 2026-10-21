@@ -7,7 +7,7 @@ import { testDate } from '@test/helpers/testClock';
 
 import { isSteerableExecutionSession, type ProviderExecutionEvent, ProviderExecutionLifecycleRegistry, type ProviderExecutionRequest, type ProviderSessionEvent } from '@/core/execution';
 import { ProviderRegistry } from '@/core/providers/ProviderRegistry';
-import type { ChatMessage } from '@/core/types';
+import type { AskUserAnswers, ChatMessage } from '@/core/types';
 import { ChatExecutionCoordinator, type ChatSteerOutcome } from '@/features/chat/execution/ChatExecutionCoordinator';
 import { providerOutputEventToStreamChunk } from '@/features/chat/rendering/providerOutputChunks';
 import { OpencodeExecutionBackend } from '@/providers/opencode/execution/OpencodeExecutionBackend';
@@ -20,7 +20,11 @@ if (process.argv.includes('--version')) { console.log('opencode v2.0.12'); retur
 if (!process.argv.includes('serve')) process.exit(3);
 let onSteer, selectedAgents = [], inbox = [], lateChild, feed, permission, grandApproval, form, mcpAnswer, settleInventory = false, cancelRace = false, ownedForms = [], idle = true, waiter, messages = [], turn = 0, modelRequests = 0, releaseModel;
 let activated = !process.env.ACTIVATION_DELAY_MS, activation;
-const emit = (type, data) => feed.write('data: ' + JSON.stringify({ type, data: { sessionID: 'ses_test', ...data } }) + '\\n\\n');
+const emit = (type, data) => {
+  const send = () => feed.write('data: ' + JSON.stringify({ type, data: { sessionID: 'ses_test', ...data } }) + '\\n\\n');
+  if (process.env.ECHO_EVENT_DELAY_MS && type.startsWith('session.')) setTimeout(send, Number(process.env.ECHO_EVENT_DELAY_MS));
+  else send();
+};
 const server = http.createServer(async (req, res) => {
   if (req.headers.authorization !== 'Basic ' + Buffer.from('opencode:' + process.env.OPENCODE_PASSWORD).toString('base64')) { res.writeHead(403).end(); return; }
   let raw = ''; for await (const c of req) raw += c;
@@ -147,6 +151,8 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       if (process.env.ECHO_PROMPT === '1') {
+        // Native history is committed before idle; HTTP may arrive before the corresponding SSE events.
+        messages = [{ id: assistantMessageID, type: 'assistant', content: [{ type: 'text', text: JSON.stringify({ route, body }) }] }];
         emit('session.text.ended', { assistantMessageID, ordinal: 0, text: JSON.stringify({ route, body }) });
         emit('session.execution.succeeded', {}); idle = true; waiter?.writeHead(204).end();
         return;
@@ -187,6 +193,14 @@ const server = http.createServer(async (req, res) => {
       }
       if (body.text === 'cancel') { emit('session.text.delta', { assistantMessageID, ordinal: 0, delta: 'Waiting' }); return; }
       if (body.text === 'disconnect') { feed.end(); return; }
+      if (body.text === 'proto-form') {
+        emit('form.created', { form: { id: 'frm_test', sessionID: 'ses_test', title: 'Color', fields: [{ key: '__proto__', type: 'string', title: 'Pick a color', options: [{ value: 'Blue', label: 'Blue' }] }, { key: 'toString', type: 'number', title: 'Count' }] } });
+        const protoStart = Date.now();
+        while (!form && Date.now() - protoStart < 1500) await new Promise(r => setTimeout(r, 10));
+        emit('session.text.ended', { assistantMessageID, ordinal: 0, text: JSON.stringify(form === undefined ? null : form) });
+        emit('session.execution.succeeded', {}); idle = true;
+        return;
+      }
       emit('permission.asked', { id: 'per_test', action: 'shell', resources: ['echo test'] });
       if (body.text === 'question-wording') {
         emit('form.created', { form: { id: 'frm_test', sessionID: 'ses_test', title: 'Questions', metadata: { kind: 'question' }, fields: [{ key: 'q0', type: 'string', title: 'Color', description: 'Which color should the report use?', custom: true, options: [{ value: 'blue', label: 'Blue' }] }] } });
@@ -234,7 +248,8 @@ const server = http.createServer(async (req, res) => {
           emit('session.execution.succeeded', { sessionID: 'ses_child' });
           emit('session.execution.started', {});
           emit('session.text.ended', { assistantMessageID: 'msg_background', ordinal: 0, text: 'Automatic reply' });
-          emit('session.execution.succeeded', {});
+          // A stopped automatic reply stays open until the client interrupts it.
+          if (body.text !== 'background-stop') emit('session.execution.succeeded', {});
         }, 50);
       }
       emit('session.tool.input.started', { assistantMessageID, id: 'reused_tool', name: 'read' });
@@ -253,7 +268,7 @@ server.listen(0, '127.0.0.1', () => console.log(JSON.stringify({ url: 'http://12
 process.stdin.resume(); process.stdin.on('end', () => server.close());
 `;
 
-function createFixture(resume = false, approval?: (signal: AbortSignal) => Promise<void>, environmentVariables = '') {
+function createFixture(resume = false, approval?: (signal: AbortSignal) => Promise<void>, environmentVariables = '', resolveAnswers?: (questions: unknown) => AskUserAnswers) {
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'claudian-http-execution-')));
   const cliPath = path.join(root, 'opencode.cjs');
   writeFileSync(cliPath, fixture, { mode: 0o700 });
@@ -271,7 +286,7 @@ function createFixture(resume = false, approval?: (signal: AbortSignal) => Promi
     vaultWorkingDirectory: root, lifecycle: 'ephemeral', nativePersistence: 'disabled-if-supported',
     interactionPort: {
       requestApproval: async (request, signal) => { approvals.push(request); await approval?.(signal); return { interactionId: request.interactionId, decision: 'allow' }; },
-      askUserQuestion: async request => { questions.push(request); const questionsInput = request.input.questions; return { interactionId: request.interactionId, answers: { q0: Array.isArray(questionsInput) ? questionsInput[0].options[0].value : '' } }; },
+      askUserQuestion: async request => { questions.push(request); const questionsInput = request.input.questions; return { interactionId: request.interactionId, answers: resolveAnswers ? resolveAnswers(questionsInput) : { q0: Array.isArray(questionsInput) ? questionsInput[0].options[0].value : '' } }; },
       dismissInteraction() {},
     },
   });
@@ -305,7 +320,8 @@ it.each([
   ] }],
   ['/unknown these images', 'prompt', '/unknown these images', {}],
 ])('sends images through the native HTTP boundary for %j', async (text, route, nativeText, attachments) => {
-  const f = createFixture(false, undefined, 'ECHO_PROMPT=1');
+  // Exercise the command idle/history fallback while its SSE start and output are still in flight.
+  const f = createFixture(false, undefined, `ECHO_PROMPT=1\nECHO_EVENT_DELAY_MS=${route === 'command' ? 100 : 0}`);
   try {
     const events: ProviderExecutionEvent[] = [];
     for await (const event of f.session.execute({
@@ -808,6 +824,27 @@ it.each(['background-approval', 'background-nested', 'mcp-form-late'])('keeps %s
   } finally { release(); await coordinator.dispose(); await serverService.dispose(); await env.dispose(); }
 }, 15000);
 
+it('ends a stopped automatic reply as interrupted, as its native idle outcome replays it', async () => {
+  const f = createFixture();
+  const events: ProviderSessionEvent[] = [];
+  f.session.onEvent(event => events.push(event));
+  const waitForCondition = async (condition: () => boolean) => {
+    for (const deadline = Date.now() + 3000; !condition(); await new Promise(resolve => setTimeout(resolve, 10))) {
+      if (Date.now() > deadline) throw new Error('Timed out waiting for the automatic reply');
+    }
+  };
+  try {
+    for await (const event of f.session.execute(request('background-stop')).events) void event;
+    await waitForCondition(() => events.some(event => event.type === 'text_delta' && event.text === 'Automatic reply'));
+    f.session.cancel();
+    const turnOf = (event: ProviderSessionEvent | undefined) => event?.scope.kind === 'background' ? event.scope.turnId : undefined;
+    const reply = turnOf(events.find(event => event.type === 'text_delta' && event.text === 'Automatic reply'));
+    const completion = () => events.find(event => event.type === 'background_turn_completed' && turnOf(event) === reply);
+    await waitForCondition(() => completion() !== undefined);
+    expect(completion()).toMatchObject({ reason: 'interrupted' });
+  } finally { await f.dispose(); }
+});
+
 it('cancels a background child waiting for approval and can continue the native parent', async () => {
   let childAsked!: () => void;
   const asked = new Promise<void>(resolve => { childAsked = resolve; });
@@ -904,6 +941,16 @@ it('replies with a selected native value even when it matches another option lab
   } finally { await f.dispose(); }
 }, 15000);
 
+it('serializes an own __proto__ form answer and omits inherited-only fields in the native reply body', async () => {
+  const f = createFixture(false, undefined, '', () => JSON.parse('{"__proto__":"Blue"}'));
+  try {
+    const events: ProviderExecutionEvent[] = [];
+    for await (const event of f.session.execute(request('proto-form')).events) events.push(event);
+    expect(events.at(-1)).toMatchObject({ type: 'turn_completed' });
+    expect(events).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'text_delta', text: '{"__proto__":"Blue"}' })]));
+  } finally { await f.dispose(); }
+}, 15000);
+
 it.each(['configuration', 'prompt'])('keeps an earlier child in its own scope during a later turn %s', async stage => {
   const f = createFixture(false, undefined, `LATE_CHILD_STAGE=${stage}`);
   const background: ProviderSessionEvent[] = [];
@@ -974,10 +1021,10 @@ it('sends hidden session reference paths through the HTTP v2 prompt boundary', a
     const events: ProviderExecutionEvent[] = [];
     for await (const event of f.session.execute({
       ...request('ref @"Review"'),
-      context: { sessionReferences: [{ id: 'conv-1-ref', title: 'Review', providerId: 'codex', updatedAt: 'updated', snapshotPath: '/tmp/claudian-sessions/ref.md' }] },
+      context: { sessionReferences: [{ id: 'conv-1-ref', title: 'Review', providerId: 'codex', updatedAt: 'updated' }] },
     }).events) events.push(event);
     const received = JSON.parse(events.flatMap(event => event.type === 'text_delta' ? [event.text] : []).join(''));
-    expect(received.body.text).toBe('ref @"Review"\n\n<context_sessions>\n<context_session title="Review" id="conv-1-ref" provider="codex" updated="updated" path="/tmp/claudian-sessions/ref.md" />\n</context_sessions>');
+    expect(received.body.text).toBe('ref @"Review"\n\n<context_sessions>\n<context_session title="Review" id="conv-1-ref" provider="codex" updated="updated" />\n</context_sessions>');
   } finally { await f.dispose(); }
 });
 it.each(['/compact', ' \t/CoMpAcT  '])('compacts %j with captured editor context', async text => {

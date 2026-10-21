@@ -17,7 +17,6 @@ function createManager(initialTabs: FakeTab[]) {
     }),
     getTabIdentities: () => manager.tabs,
     isTabWorking: (tabId: string) => manager.tabs.find(tab => tab.id === tabId)?.isWorking ?? false,
-    retainTabs: jest.fn(),
     resetConversationTabs: jest.fn().mockResolvedValue(undefined),
   };
   return manager;
@@ -27,6 +26,7 @@ type FakeManager = ReturnType<typeof createManager>;
 
 function createStore(): jest.Mocked<ConversationLifecycleStore> {
   return {
+    getConversationList: jest.fn(() => []),
     deleteConversation: jest.fn().mockResolvedValue(undefined),
     setConversationArchived: jest.fn().mockResolvedValue(undefined),
     setConversationsPinned: jest.fn().mockResolvedValue(undefined),
@@ -42,6 +42,7 @@ function createLifecycle(...managers: Array<FakeManager | null>) {
   const views = managers.map(manager => ({ getTabManager: () => manager }));
   const lifecycle = new ConversationLifecycle({
     conversations,
+    sessions: { get: () => null, isRunning: id => managers.some(manager => manager?.tabs.some(tab => tab.conversationId === id && tab.isWorking)), retire: async () => undefined, whenSettled: async () => true },
     views: { getAllViews: () => views as never },
   });
   return { lifecycle, conversations };
@@ -64,7 +65,7 @@ describe('ConversationLifecycle', () => {
       await lifecycle.delete(['idle-session', 'background-session', 'closed-session']);
 
       expect(conversations.deleteConversation.mock.calls).toEqual([['idle-session'], ['closed-session']]);
-      expect(Notice).toHaveBeenCalledWith('Skipped 1 session that is running');
+      expect(Notice).toHaveBeenCalledWith('Skipped 1 session running');
     });
 
     it('refuses a single running session without touching its tabs', async () => {
@@ -92,32 +93,16 @@ describe('ConversationLifecycle', () => {
   });
 
   describe('pin', () => {
-    it('pins in one batch and retains only tabs bound to the pinned sessions in every view', async () => {
-      const local = createManager([
-        { id: 'pinned-tab', conversationId: 'conversation-1' },
-        { id: 'other-tab', conversationId: 'conversation-3' },
-        { id: 'blank-tab', conversationId: null },
-      ]);
-      const other = createManager([{ id: 'remote-tab', conversationId: 'conversation-2' }]);
-      const { lifecycle, conversations } = createLifecycle(local, other);
+    it('pins in one batch without touching tabs in any view', async () => {
+      const local = createManager([{ id: 'pinned-tab', conversationId: 'conversation-1' }]);
+      const { lifecycle, conversations } = createLifecycle(local);
 
       await lifecycle.setPinned(['conversation-1', 'conversation-2'], true);
 
       expect(conversations.setConversationsPinned).toHaveBeenCalledTimes(1);
       expect(conversations.setConversationsPinned).toHaveBeenCalledWith(['conversation-1', 'conversation-2'], true);
-      expect(local.retainTabs).toHaveBeenCalledWith(['pinned-tab']);
-      expect(other.retainTabs).toHaveBeenCalledWith(['remote-tab']);
-      expect(conversations.setConversationsPinned.mock.invocationCallOrder[0])
-        .toBeLessThan(local.retainTabs.mock.invocationCallOrder[0]);
-    });
-
-    it('does not retain tabs when unpinning', async () => {
-      const manager = createManager([{ id: 'tab', conversationId: 'conversation-1' }]);
-      const { lifecycle } = createLifecycle(manager);
-
-      await lifecycle.setPinned(['conversation-1'], false);
-
-      expect(manager.retainTabs).not.toHaveBeenCalled();
+      expect(local.resetConversationTabs).not.toHaveBeenCalled();
+      expect(local.closeTab).not.toHaveBeenCalled();
     });
   });
 
@@ -131,9 +116,9 @@ describe('ConversationLifecycle', () => {
 
       expect(local.closeTab).toHaveBeenCalledWith('local-tab');
       expect(other.closeTab).toHaveBeenCalledWith('other-tab');
-      expect(conversations.setConversationArchived).toHaveBeenCalledWith('conversation-1', true);
+      expect(conversations.archiveConversationsIf).toHaveBeenCalledWith(['conversation-1'], expect.any(Function));
       expect(other.closeTab.mock.invocationCallOrder[0])
-        .toBeLessThan(conversations.setConversationArchived.mock.invocationCallOrder[0]);
+        .toBeLessThan(conversations.archiveConversationsIf.mock.invocationCallOrder[0]);
     });
 
     it('does not archive or close anything while any bound tab is working', async () => {
@@ -173,7 +158,7 @@ describe('ConversationLifecycle', () => {
       expect(conversations.archiveConversationsIf).toHaveBeenCalledTimes(1);
       expect(conversations.archiveConversationsIf)
         .toHaveBeenCalledWith(['conversation-1', 'conversation-2'], expect.any(Function));
-      expect(Notice).toHaveBeenCalledWith('Skipped 1 session that is open or running');
+      expect(Notice).toHaveBeenCalledWith('Skipped 1 session open or running');
     });
 
     it('does not archive a session reopened while a later session in the batch is still closing', async () => {
@@ -199,7 +184,49 @@ describe('ConversationLifecycle', () => {
       const shouldArchive = conversations.archiveConversationsIf.mock.calls[0][1];
       expect(shouldArchive({ id: 'conversation-1' } as never)).toBe(false);
       expect(shouldArchive({ id: 'conversation-2' } as never)).toBe(true);
-      expect(Notice).toHaveBeenCalledWith('Skipped 1 session that is open or running');
+      expect(Notice).toHaveBeenCalledWith('Skipped 1 session open or running');
     });
+  });
+});
+
+
+describe('committed archive mailbox cleanup', () => {
+  it('preserves pending messages when an archive write fails without committing', async () => {
+    const conversations = createStore();
+    const clear = jest.fn();
+    conversations.getConversationList.mockReturnValue([{ id: 'target', isArchived: false }]);
+    conversations.archiveConversationsIf.mockRejectedValue(new Error('write failed'));
+    const lifecycle = new ConversationLifecycle({
+      conversations,
+      sessions: { get: () => ({ mailbox: { clear } }) as never, isRunning: () => false, retire: async () => undefined, whenSettled: async () => true },
+      views: { getAllViews: () => [] },
+    });
+    await expect(lifecycle.archiveIf(['target'], () => true)).rejects.toThrow('write failed');
+    expect(clear).not.toHaveBeenCalled();
+  });
+
+  it.each(['manual', 'batch', 'automatic'] as const)('clears only committed archives after %s persistence settles', async mode => {
+    const conversations = createStore();
+    const clear = jest.fn();
+    let archived = false;
+    let release!: () => void;
+    conversations.getConversationList.mockImplementation(() => [{ id: 'target', isArchived: archived }]);
+    conversations.archiveConversationsIf.mockImplementation(async () => {
+      await new Promise<void>(resolve => { release = resolve; });
+      archived = true;
+      return 1;
+    });
+    const lifecycle = new ConversationLifecycle({
+      conversations,
+      sessions: { get: () => ({ mailbox: { clear } }) as never, isRunning: () => false, retire: async () => undefined, whenSettled: async () => true },
+      views: { getAllViews: () => [] },
+    });
+    const saving = mode === 'manual' ? lifecycle.setArchived('target', true)
+      : mode === 'batch' ? lifecycle.archive(['target']) : lifecycle.archiveIf(['target'], () => true);
+    await new Promise(resolve => setImmediate(resolve));
+    expect(clear).not.toHaveBeenCalled();
+    release();
+    await saving;
+    expect(clear).toHaveBeenCalledTimes(1);
   });
 });

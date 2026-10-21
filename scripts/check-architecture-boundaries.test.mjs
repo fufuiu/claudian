@@ -311,9 +311,12 @@ test('runtime command discovery cannot import Vault skill management', () => {
   ), []);
 });
 
-test('renderer source does not import AsyncLocalStorage', () => {
-  const pattern = /import\s*\{[^}]*\bAsyncLocalStorage\b[^}]*\}\s*from\s*['"](?:node:)?async_hooks['"]/s;
-  assert.deepEqual(findMatches([sourceRoot], pattern), []);
+test('renderer source does not import Node async hooks', () => {
+  // Generated native-process programs are string literals, not renderer imports.
+  const matches = listTypeScriptFiles(sourceRoot)
+    .filter(file => listSourceImports(file).some(sourceImport => /^(?:node:)?async_hooks$/.test(sourceImport.specifier)))
+    .map(file => normalizeRepositoryPath(path.relative(process.cwd(), file)));
+  assert.deepEqual(matches, []);
 });
 
 test('tab runtime construction stays private to the factory boundary', () => {
@@ -508,10 +511,15 @@ test('Bun lock parsing accepts the repository JSONC shape without weakening JSON
     workspaces: { '': { dependencies: { 'smol-toml': '1.7.1' } } },
     packages: { 'smol-toml': ['smol-toml@1.7.1'] },
   });
-  assert.throws(
-    () => parseBunLock('{ "packages": /* unsupported */ {} }'),
-    /bun\.lock is not valid JSONC/,
-  );
+  const prototypeKey = '{"__proto__": {"packages": {}}, "constructor": "literal"}';
+  assert.deepEqual(parseBunLock(prototypeKey), JSON.parse(prototypeKey));
+  for (const invalid of [
+    '{ "packages": /* unsupported */ {} }',
+    '{ "packages": {} // unsupported\n}',
+    '', '{', '{"packages":}', '{"packages":{} "other":1}', '{} trailing',
+  ]) {
+    assert.throws(() => parseBunLock(invalid), /bun\.lock is not valid JSONC/);
+  }
 });
 
 test('production artifact entry rejects dependency drift before emitting main.js', () => {

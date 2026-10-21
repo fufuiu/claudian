@@ -16,12 +16,12 @@ function countCompleted(todos: TodoItem[]): number {
 
 export function getTodoName(input: Record<string, unknown>): string {
   const todos = getTodos(input);
-  return todos && todos.length > 0 ? t('chat.tools.tasksProgress', { completed: countCompleted(todos), count: todos.length }) : t('chat.tools.tasks');
+  return todos && todos.length > 0 ? t('chat.tools.taskProgress', { completed: countCompleted(todos), total: todos.length }) : t('chat.tools.tasks');
 }
 
 export function getTodoLabel(input: Record<string, unknown>): string {
   const todos = getTodos(input);
-  return todos ? t('chat.tools.tasksLabel', { completed: countCompleted(todos), count: todos.length }) : t('chat.tools.tasks');
+  return todos ? t('chat.tools.taskProgressLabel', { completed: countCompleted(todos), total: todos.length }) : t('chat.tools.tasks');
 }
 
 /** The in-progress task's active form, shown beside the collapsed header. */

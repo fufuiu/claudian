@@ -1,4 +1,4 @@
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 
@@ -38,6 +38,12 @@ if (process.argv.includes('--version')) {
       res.setHeader('Content-Type', 'application/json');
       res.end('{}'); return;
     }
+    if (url.pathname === '/api/model' && fs.existsSync(process.env.CATALOG_FILE + '.error')) {
+      const error = JSON.parse(fs.readFileSync(process.env.CATALOG_FILE + '.error', 'utf8'));
+      res.writeHead(error.status, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(error.body)); return;
+    }
+    if (url.pathname === '/api/model' && fs.existsSync(process.env.CATALOG_FILE + '.hang')) return;
     if (url.pathname === '/api/model') fs.writeFileSync(process.env.ENDPOINT_FILE + '.read', String(reads + 1));
     const catalog = JSON.parse(fs.readFileSync(process.env.CATALOG_FILE, 'utf8'))
       .filter(model => activated || model.providerID !== 'opencode-go')
@@ -96,10 +102,13 @@ export function createOpencodeV2MetadataFixture(): OpencodeV2MetadataFixture {
   };
 
   const writeCatalog = (name = 'DeepSeek Chat'): void => {
-    writeFileSync(environment.CATALOG_FILE!, JSON.stringify([
+    // The native fixture may read the catalog mid-update; a rename keeps it from parsing a truncated file.
+    const pending = environment.CATALOG_FILE! + '.pending';
+    writeFileSync(pending, JSON.stringify([
       { providerID: 'deepseek', id: 'chat', name, enabled: true, variants: [{ id: 'high' }] },
       { providerID: 'deepseek', id: 'disabled', name: 'Disabled', enabled: false, variants: [] },
     ]));
+    renameSync(pending, environment.CATALOG_FILE!);
   };
 
   const createPlugin = (): any => {

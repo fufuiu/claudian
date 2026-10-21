@@ -109,7 +109,7 @@ export function renderToolCall(
   options: ToolCallRenderOptions = {}
 ): HTMLElement {
   const toolEl = createToolCard(parentEl, toolCall, {
-    initialText: t('common.runningEllipsis'),
+    initialText: t('chat.tools.running'),
     initiallyExpanded: options.initiallyExpanded,
   });
   return toolEl;

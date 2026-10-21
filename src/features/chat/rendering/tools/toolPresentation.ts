@@ -5,6 +5,9 @@ import {
   TOOL_ASK_USER_QUESTION,
   TOOL_BASH,
   TOOL_BASH_OUTPUT,
+  TOOL_CLAUDIAN_LIST_DESTINATIONS,
+  TOOL_CLAUDIAN_READ_SESSION,
+  TOOL_CLAUDIAN_SEND_MESSAGE,
   TOOL_EDIT,
   TOOL_EDIT_IMAGE,
   TOOL_ENTER_PLAN_MODE,
@@ -36,6 +39,11 @@ import type { ToolCallInfo } from '@/core/types';
 import { getApplyPatchSummary, renderApplyPatchExpanded, setApplyPatchStatus } from '@/features/chat/rendering/tools/applyPatchContent';
 import { renderAskUserQuestionContent } from '@/features/chat/rendering/tools/askUserQuestionContent';
 import { getScriptLanguage, getScriptSummary, renderScriptContent } from '@/features/chat/rendering/tools/scriptContent';
+import {
+  renderListDestinationsContent,
+  renderReadSessionContent,
+  renderSendMessageContent,
+} from '@/features/chat/rendering/tools/sessionToolContent';
 import { getCurrentTaskText, getTodoLabel, getTodoName, renderTodoWriteContent, setTodoWriteStatus } from '@/features/chat/rendering/tools/todoContent';
 import {
   contentFallback,
@@ -99,9 +107,8 @@ function inputText(key: string, fallback = ''): (input: ToolInput) => string {
 
 function filePresentation(displayName: TranslationKey): ToolPresentation {
   return {
-    name: () => t(displayName),
     summary: input => fileNameOnly(getInputText(input, 'file_path')),
-    label: input => `${t(displayName)}: ${shortenPath(getInputText(input, 'file_path')) || 'file'}`,
+    label: input => `${t(displayName)}: ${shortenPath(getInputText(input, 'file_path')) || t('chat.tools.file')}`,
   };
 }
 
@@ -160,7 +167,7 @@ function agentWaitSummary(input: ToolInput): string {
   const ids = Array.isArray(input.ids) ? input.ids.length : 0;
   const timeoutMs = typeof input.timeout_ms === 'number' ? input.timeout_ms : undefined;
   const parts: string[] = [];
-  if (ids > 0) parts.push(`${ids} agent${ids === 1 ? '' : 's'}`);
+  if (ids > 0) parts.push(t(ids === 1 ? 'chat.tools.agentCount' : 'chat.tools.agentCountPlural', { count: ids }));
   if (timeoutMs !== undefined) parts.push(`${Math.round(timeoutMs / 1000)}s`);
   return parts.join(', ');
 }
@@ -177,7 +184,7 @@ const TOOL_PRESENTATIONS: ReadonlyMap<string, ToolPresentation> = new Map<string
   [TOOL_EDIT, filePresentation('chat.tools.names.edit')],
   [TOOL_BASH, {
     summary: commandSummary,
-    label: input => `Bash: ${truncateText(getInputText(input, 'command', 'command'), 40)}`,
+    label: input => `Bash: ${truncateText(getInputText(input, 'command', t('chat.tools.commandPlaceholder')), 40)}`,
     body: (container, tool) => renderBashContent(container, tool.input, tool.result ?? ''),
     handlesMissingResult: true,
     pendingBody: (container, tool, pendingText) =>
@@ -195,12 +202,12 @@ const TOOL_PRESENTATIONS: ReadonlyMap<string, ToolPresentation> = new Map<string
   [TOOL_GENERATE_VIDEO, { summary: promptSummary }],
   [TOOL_GLOB, {
     summary: inputText('pattern'),
-    label: input => `Glob: ${getInputText(input, 'pattern', 'files')}`,
+    label: input => `Glob: ${getInputText(input, 'pattern', t('chat.tools.filesPlaceholder'))}`,
     body: FILE_SEARCH_BODY,
   }],
   [TOOL_GREP, {
     summary: inputText('pattern'),
-    label: input => `Grep: ${getInputText(input, 'pattern', 'pattern')}`,
+    label: input => `Grep: ${getInputText(input, 'pattern', t('chat.tools.patternPlaceholder'))}`,
     body: FILE_SEARCH_BODY,
   }],
   [TOOL_LS, {
@@ -221,11 +228,11 @@ const TOOL_PRESENTATIONS: ReadonlyMap<string, ToolPresentation> = new Map<string
   }],
   [TOOL_SKILL, {
     summary: inputText('skill'),
-    label: input => `Skill: ${getInputText(input, 'skill', 'skill')}`,
+    label: input => `Skill: ${getInputText(input, 'skill', t('settings.agentSkills.skillBadge'))}`,
   }],
   [TOOL_TOOL_SEARCH, {
     summary: input => truncateText(parseToolSearchQuery(getInputText(input, 'query')), 60),
-    label: input => `ToolSearch: ${parseToolSearchQuery(getInputText(input, 'query')) || 'tools'}`,
+    label: input => `ToolSearch: ${parseToolSearchQuery(getInputText(input, 'query')) || t('chat.tools.toolsPlaceholder')}`,
     body: (container, tool) => renderToolSearchExpanded(container, tool.result ?? ''),
   }],
   [TOOL_TODO_WRITE, {
@@ -241,7 +248,7 @@ const TOOL_PRESENTATIONS: ReadonlyMap<string, ToolPresentation> = new Map<string
   [TOOL_ASK_USER_QUESTION, {
     cardBody: renderAskUserQuestionContent,
   }],
-  [TOOL_ENTER_PLAN_MODE, { name: () => t('chat.tools.enterPlan') }],
+  [TOOL_ENTER_PLAN_MODE, { name: () => t('chat.tools.enteringPlan') }],
   [TOOL_EXIT_PLAN_MODE, { name: () => t('chat.tools.planComplete') }],
   [TOOL_APPLY_PATCH, {
     summary: getApplyPatchSummary,
@@ -251,6 +258,21 @@ const TOOL_PRESENTATIONS: ReadonlyMap<string, ToolPresentation> = new Map<string
   }],
   [TOOL_WRITE_STDIN, { summary: getWriteStdinSummary }],
   [TOOL_WORKFLOW, scriptPresentation('chat.tools.names.workflow')],
+  [TOOL_CLAUDIAN_LIST_DESTINATIONS, {
+    name: () => t('chat.tools.listDestinations'),
+    body: renderListDestinationsContent,
+  }],
+  [TOOL_CLAUDIAN_SEND_MESSAGE, {
+    // An interrupt without a message only stops the recipient.
+    name: input => (getInputText(input, 'mode') === 'interrupt' && !getInputText(input, 'text')
+      ? t('chat.tools.stopSession') : t('chat.tools.messageSession')),
+    body: renderSendMessageContent,
+  }],
+  [TOOL_CLAUDIAN_READ_SESSION, {
+    name: () => t('chat.tools.readSession'),
+    body: renderReadSessionContent,
+    handlesMissingResult: true,
+  }],
   [TOOL_SEND_MESSAGE, { ...AGENT_LIFECYCLE, name: () => t('chat.tools.messageAgent'), summary: agentTargetMessageSummary }],
   [TOOL_FOLLOWUP_TASK, { ...AGENT_LIFECYCLE, name: () => t('chat.tools.continueAgent'), summary: agentTargetMessageSummary }],
   [TOOL_LIST_AGENTS, { ...AGENT_LIFECYCLE, name: () => t('chat.tools.listAgents'), summary: input => getInputText(input, 'path_prefix', t('chat.tools.allAgents')) }],

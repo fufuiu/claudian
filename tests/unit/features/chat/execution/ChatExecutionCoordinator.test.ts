@@ -2,7 +2,7 @@ import type { FakeRun } from '@test/helpers/ChatExecutionHarness';
 import { beginExecution, createHarness, createSubmission, deferred, FakeSession, requestedScope } from '@test/helpers/ChatExecutionHarness';
 import { testDate } from '@test/helpers/testClock';
 
-import { type ProviderExecutionEvent, type ProviderSessionSnapshot } from '@/core/execution';
+import { type ProviderExecutionEvent, type ProviderSessionSnapshot, type ProviderSessionToolPort } from '@/core/execution';
 import type { ChatMessage } from '@/core/types';
 import { ChatExecutionInteractionStaleError, ChatExecutionPreHandoffError } from '@/features/chat/execution/ChatExecutionCoordinator';
 
@@ -10,7 +10,81 @@ const IDLE_MS = 30 * 60_000;
 
 afterEach(() => jest.useRealTimers());
 
+const listArgs = { includeProviders: false, limit: 50 };
+
 describe('ChatExecutionCoordinator', () => {
+  function createSessionToolHarness() {
+    const bindings: { port: ProviderSessionToolPort; dispose: jest.Mock }[] = [];
+    const bindSessionTools = jest.fn((_conversationId: string) => {
+      const controller = new AbortController();
+      const port: ProviderSessionToolPort = {
+        list: async () => { controller.signal.throwIfAborted(); return { sessions: [] }; },
+        send: async () => {
+          controller.signal.throwIfAborted();
+          return { sessionId: 'recipient', title: 'Review', provider: 'codex', status: 'queued' };
+        },
+        read: jest.fn(),
+      };
+      const binding = { port, dispose: jest.fn(() => controller.abort(new Error('Binding revoked'))) };
+      bindings.push(binding);
+      return binding;
+    });
+    return { ...createHarness({ bindSessionTools }), bindSessionTools, bindings };
+  }
+
+  it.each(['bind', 'invalidation', 'dispose'] as const)(
+    'revokes session tools before provider teardown on %s', async mode => {
+      const harness = createSessionToolHarness();
+      await harness.coordinator.bindConversation({ conversationId: 'caller', providerId: 'claude' });
+      expect(harness.bindSessionTools).not.toHaveBeenCalled();
+      await harness.coordinator.prepare();
+      await harness.coordinator.prepare();
+      const backend = harness.backends.get('claude')!;
+      const port = backend.configs[0].sessionTools!;
+      expect(harness.bindSessionTools).toHaveBeenCalledTimes(1);
+      expect(harness.bindSessionTools).toHaveBeenCalledWith('caller');
+      expect(port).toBe(harness.bindings[0].port);
+      await expect(port.list(listArgs, new AbortController().signal)).resolves.toEqual({ sessions: [] });
+      const teardown = deferred<void>();
+      const dispose = jest.spyOn(backend.sessions[0], 'dispose').mockImplementationOnce(async () => {
+        await expect(port.list(listArgs, new AbortController().signal)).rejects.toThrow('Binding revoked');
+        await teardown.promise;
+      });
+      const release = mode === 'bind' ? harness.coordinator.bindConversation(null)
+        : mode === 'invalidation' ? harness.registry.runTransition(['claude'], async () => undefined)
+          : harness.coordinator.dispose();
+      try {
+        for (let attempt = 0; attempt < 20 && !dispose.mock.calls.length; attempt++) await Promise.resolve();
+        expect(dispose).toHaveBeenCalledTimes(1);
+        await expect(port.list(listArgs, new AbortController().signal)).rejects.toThrow('Binding revoked');
+        await expect(port.send({ text: 'late' }, new AbortController().signal)).rejects.toThrow('Binding revoked');
+      } finally {
+        teardown.resolve();
+        await release;
+        await harness.coordinator.dispose();
+        await harness.registry.dispose();
+      }
+      expect(harness.bindings[0].dispose).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each(['acquire', 'persistence'] as const)('revokes session tools if preparation fails during %s', async phase => {
+    const harness = createSessionToolHarness();
+    const failure = new Error('Preparation failed');
+    if (phase === 'acquire') {
+      jest.spyOn(harness.backends.get('claude')!, 'createSession').mockImplementationOnce(() => { throw failure; });
+    } else {
+      harness.repository.persistExecutionSnapshot.mockRejectedValueOnce(failure);
+    }
+    await harness.coordinator.bindConversation({ conversationId: 'caller', providerId: 'claude' });
+    await expect(harness.coordinator.prepare()).rejects.toBe(failure);
+    expect(harness.bindings).toHaveLength(1);
+    await expect(harness.bindings[0].port.list(listArgs, new AbortController().signal)).rejects.toThrow('Binding revoked');
+    await harness.coordinator.dispose();
+    await harness.registry.dispose();
+    expect(harness.bindings[0].dispose).toHaveBeenCalledTimes(1);
+  });
+
   it.each(['claude', 'codex'] as const)(
     'validates %s events without serializing resume history after an equivalent rebind',
     async (providerId) => {
@@ -171,9 +245,14 @@ describe('ChatExecutionCoordinator', () => {
       await harness.registry.dispose();
     });
 
-    it('restarts the idle period after each turn', async () => {
+    it.each([false, true])('restarts the idle period after each turn (retained steer: %s)', async retainSteer => {
       const harness = createHarness({ idleReleaseMs: IDLE_MS });
       const { session, run, resultPromise } = await beginExecution(harness);
+      if (retainSteer) {
+        jest.spyOn(session, 'steer').mockResolvedValueOnce(true);
+        await harness.coordinator.steer(createSubmission({ submissionId: 'retained-input' }));
+      }
+      expect(!!harness.coordinator.getSteerSubmission('retained-input')).toBe(retainSteer);
       await jest.advanceTimersByTimeAsync(IDLE_MS + 1);
       expect(session.disposeCalls).toBe(0);
       run.events.push({ type: 'turn_started', scope: requestedScope(session, run, 1), accepted: true });
@@ -185,6 +264,7 @@ describe('ChatExecutionCoordinator', () => {
       expect(session.disposeCalls).toBe(0);
       await jest.advanceTimersByTimeAsync(1);
       expect(session.disposeCalls).toBe(1);
+      expect(harness.coordinator.getSteerSubmission('retained-input')).toBeUndefined();
       await harness.coordinator.dispose();
       await harness.registry.dispose();
     });
@@ -557,6 +637,7 @@ describe('ChatExecutionCoordinator', () => {
     await expect(resultPromise).rejects.toMatchObject({
       name: 'ChatExecutionPreHandoffError',
       cause: rejection,
+      userMessage: 'No enabled model is available.',
     });
   });
 
@@ -586,10 +667,9 @@ describe('ChatExecutionCoordinator', () => {
     });
     run.events.end();
 
-    await expect(resultPromise).rejects.toMatchObject({
-      name: 'ChatExecutionPreHandoffError',
-      cause: sinkError,
-    });
+    const error = await resultPromise.catch((caught: unknown) => caught);
+    expect(error).toMatchObject({ name: 'ChatExecutionPreHandoffError', cause: sinkError });
+    expect(error).toHaveProperty('userMessage', undefined);
   });
 
   it('reports acceptance when a later configuration error terminates the run', async () => {
@@ -693,6 +773,27 @@ describe('ChatExecutionCoordinator', () => {
     expect(session.cancelCalls).toBe(0);
     expect(session.requests[0].signal.aborted).toBe(true);
     await expect(resultPromise).resolves.toMatchObject({ status: 'cancelled' });
+  });
+
+  it('keeps background work running when a turn signal aborts before provider handoff', async () => {
+    const harness = createHarness();
+    await harness.coordinator.bindConversation({ conversationId: 'conversation-1', providerId: 'claude' });
+    await harness.coordinator.prepare();
+    const session = harness.backends.get('claude')!.sessions[0];
+    session.emit({
+      type: 'background_turn_started',
+      scope: { kind: 'background', sessionInstanceId: session.sessionInstanceId, turnId: 'background-1', sequence: 1 },
+    });
+    expect(harness.coordinator.hasBackgroundWork).toBe(true);
+    const turnSignal = new AbortController();
+
+    const resultPromise = harness.coordinator.execute(createSubmission(), turnSignal.signal);
+    turnSignal.abort();
+
+    await expect(resultPromise).rejects.toBeInstanceOf(ChatExecutionPreHandoffError);
+    expect(session.runs).toHaveLength(0);
+    expect(session.cancelCalls).toBe(0);
+    expect(harness.coordinator.hasBackgroundWork).toBe(true);
   });
 
   it('accepts steer input only when the current session supports and accepts it', async () => {
@@ -1105,7 +1206,7 @@ describe('ChatExecutionCoordinator', () => {
     session.emit({ type: 'background_turn_started', scope: backgroundScope });
     expect(harness.coordinator.hasBackgroundWork).toBe(true);
     expect(onBackgroundWorkChanged).toHaveBeenLastCalledWith(true);
-    harness.coordinator.cancel();
+    harness.coordinator.cancelBackgroundWork();
     expect(session.cancelCalls).toBe(1);
     session.emit({
       type: 'text_delta',
@@ -1145,7 +1246,7 @@ describe('ChatExecutionCoordinator', () => {
     );
   });
 
-  it('publishes background work only when running children and background turns change it', async () => {
+  it.each(['subagent_updated', 'session_state_changed'] as const)('publishes background work transitions from %s', async eventType => {
     const onBackgroundWorkChanged = jest.fn();
     const harness = createHarness({ onBackgroundWorkChanged });
     await harness.coordinator.bindConversation({ conversationId: 'conversation-1', providerId: 'codex' });
@@ -1154,11 +1255,13 @@ describe('ChatExecutionCoordinator', () => {
     let childrenRunning = false;
     Object.assign(session, { hasBackgroundWork: () => childrenRunning });
     let sessionSequence = 0;
-    const subagentUpdate = (status: 'running' | 'completed') => session.emit({
-      type: 'subagent_updated',
-      scope: { kind: 'session', sessionInstanceId: session.sessionInstanceId, sequence: ++sessionSequence },
-      subagent: { id: 'spawn', description: 'Helper', status, isExpanded: false, toolCalls: [] },
-    });
+    const subagentUpdate = (status: 'running' | 'completed') => {
+      const scope = { kind: 'session' as const, sessionInstanceId: session.sessionInstanceId, sequence: ++sessionSequence };
+      session.emit(eventType === 'subagent_updated' ? {
+        type: 'subagent_updated', scope,
+        subagent: { id: 'spawn', description: 'Helper', status, isExpanded: false, toolCalls: [] },
+      } : { type: 'session_state_changed', scope, snapshot: session.getSnapshot() });
+    };
     const backgroundScope = (sequence: number) => ({
       kind: 'background' as const, sessionInstanceId: session.sessionInstanceId, turnId: 'background-1', sequence,
     });

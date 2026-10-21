@@ -5,7 +5,7 @@ import { formatDurationMmSs } from '@/utils/date';
 
 export interface ThinkingIndicatorDeps {
   state: ChatState;
-  getMessagesEl: () => HTMLElement;
+  getMessagesEl: () => HTMLElement | null;
   updateQueueIndicator: () => void;
   scrollToBottom: () => void;
 }
@@ -23,7 +23,7 @@ export class ThinkingIndicator {
   /** When the pending indicator is due, so an earlier request can replace a later one. */
   #dueAt = 0;
   /** An explicit status (such as compaction) stays with its response across hide and resume. */
-  #explicit: { contentEl: HTMLElement; text: string; cls?: string } | null = null;
+  #explicit: { messageId: string | null; text: string; cls?: string } | null = null;
   /** Stream generation that owns the current indicator; a superseded turn's indicator is discarded. */
   #generation: number | null = null;
   /** Generation whose due indicator an open prompt withheld; the prompt's settlement owes it a show. */
@@ -61,7 +61,7 @@ export class ThinkingIndicator {
     const { state } = this.deps;
 
     if (state.thinkingIndicatorTimeout) {
-      const activeWindow = this.deps.getMessagesEl().ownerDocument.defaultView ?? window;
+      const activeWindow = this.deps.getMessagesEl()?.ownerDocument.defaultView ?? window;
       state.clearThinkingIndicatorTimeout(activeWindow);
     }
 
@@ -82,14 +82,14 @@ export class ThinkingIndicator {
     this.#explicit = null;
   }
 
+  detachPresentation(): void { this.hide(); }
+
   dispose(): void {
     this.endExplicit();
   }
 
   #schedule(delay: number, overrideText?: string, overrideCls?: string): void {
     const { state } = this.deps;
-    if (!state.currentContentEl) return;
-
     const generation = state.streamGeneration;
     if (this.#generation !== generation) {
       if (state.thinkingEl || state.thinkingIndicatorTimeout) this.hide();
@@ -98,10 +98,12 @@ export class ThinkingIndicator {
 
     const isExplicitRequest = !!overrideText;
     if (overrideText) {
-      this.#explicit = { contentEl: state.currentContentEl, text: overrideText, cls: overrideCls };
-    } else if (this.#explicit?.contentEl === state.currentContentEl) {
+      this.#explicit = { messageId: state.response.messageId, text: overrideText, cls: overrideCls };
+    } else if (this.#explicit && this.#explicit.messageId === state.response.messageId) {
       ({ text: overrideText, cls: overrideCls } = this.#explicit);
     }
+
+    if (!state.currentContentEl) return;
 
     // A pending show keeps its deadline; repeated requests must not postpone it.
     const dueAt = performance.now() + delay;
@@ -111,7 +113,7 @@ export class ThinkingIndicator {
       state.clearThinkingIndicatorTimeout(timerWindow);
     }
 
-    if (state.currentThinkingState) return;
+    if (state.currentThinkingBlock) return;
 
     if (state.thinkingEl) {
       state.currentContentEl.appendChild(state.thinkingEl);
@@ -131,7 +133,7 @@ export class ThinkingIndicator {
         this.#blockedGeneration = generation;
         return;
       }
-      if (!state.currentContentEl || state.thinkingEl || state.currentThinkingState) return;
+      if (!state.currentContentEl || state.thinkingEl || state.currentThinkingBlock) return;
       this.#blockedGeneration = null;
 
       const cls = overrideCls
