@@ -4667,6 +4667,69 @@ describe('ClaudianPlugin', () => {
       expect(mockApp.workspace.trigger).toHaveBeenCalledTimes(1);
       expect(mockApp.workspace.trigger).toHaveBeenCalledWith('claudian:turn-ended', { sessionId: conversation.id });
     });
+
+    it('publishes session progress and interaction changes as workspace events', async () => {
+      await plugin.onload();
+      const host = chatHostOf();
+      const conversation = await host.createConversation();
+      const runtime = host.sessionRuntimes.ensure({ conversationId: conversation.id, providerId: conversation.providerId, draftModel: null });
+      runtime.signal({ type: 'progress', progress: { kind: 'text', messageId: 'm', blockIndex: 0, text: 'Hi' } });
+      runtime.signal({ type: 'interaction', interactionId: 'ask', pending: true });
+      runtime.signal({ type: 'interaction', interactionId: 'ask', pending: false });
+      expect(mockApp.workspace.trigger.mock.calls).toEqual([
+        ['claudian:turn-progress', { sessionId: conversation.id, kind: 'text', messageId: 'm', blockIndex: 0, text: 'Hi' }],
+        ['claudian:interaction-requested', { sessionId: conversation.id, interactionId: 'ask' }],
+        ['claudian:interaction-settled', { sessionId: conversation.id, interactionId: 'ask' }],
+      ]);
+    });
+
+    it('opens a session in the existing chat view, revealing and focusing it only when asked', async () => {
+      const openSession = jest.fn().mockResolvedValue(undefined);
+      const focusActiveInput = jest.fn();
+      const leaf = { loadIfDeferred: jest.fn().mockResolvedValue(undefined), view: { getTabManager: jest.fn(), openSession, focusActiveInput } };
+      mockApp.workspace.getLeavesOfType.mockReturnValue([leaf]);
+      await plugin.onload();
+      await viewsOf(plugin).openSession('session-1', { focus: false });
+      expect(openSession).toHaveBeenCalledWith('session-1');
+      expect(mockApp.workspace.revealLeaf).not.toHaveBeenCalled();
+      expect(focusActiveInput).not.toHaveBeenCalled();
+      await viewsOf(plugin).openSession('session-1', { focus: true });
+      expect(mockApp.workspace.revealLeaf).toHaveBeenCalledWith(leaf);
+      expect(focusActiveInput).toHaveBeenCalledTimes(1);
+      expect(openSession.mock.invocationCallOrder[1]).toBeLessThan(focusActiveInput.mock.invocationCallOrder[0]);
+    });
+
+    it('focuses the chat view that ends up showing the session, not the one asked first', async () => {
+      const focusA = jest.fn();
+      const focusB = jest.fn();
+      const tabs = (conversationId: string | null) => ({ getTabIdentities: () => [{ id: `tab-${conversationId}`, conversationId }] });
+      const leafB = { loadIfDeferred: jest.fn(), view: { getTabManager: () => tabs('session-1'), openSession: jest.fn(), focusActiveInput: focusB } };
+      // Opening from view A reveals the tab view B already has for the session.
+      const leafA = { loadIfDeferred: jest.fn().mockResolvedValue(undefined), view: { getTabManager: () => tabs(null), openSession: jest.fn().mockResolvedValue(undefined), focusActiveInput: focusA } };
+      Object.assign(leafA.view, { leaf: leafA });
+      Object.assign(leafB.view, { leaf: leafB });
+      mockApp.workspace.getLeavesOfType.mockReturnValue([leafA, leafB]);
+      await plugin.onload();
+      await viewsOf(plugin).openSession('session-1', { focus: true });
+      expect(leafA.view.openSession).toHaveBeenCalledWith('session-1');
+      expect(mockApp.workspace.revealLeaf).toHaveBeenCalledWith(leafB);
+      expect(focusB).toHaveBeenCalledTimes(1);
+      expect(focusA).not.toHaveBeenCalled();
+    });
+
+    it('opens a chat view at the configured placement without activating it when none exists', async () => {
+      const openSession = jest.fn().mockResolvedValue(undefined);
+      const rightLeaf: { setViewState: jest.Mock; view?: unknown } = {
+        setViewState: jest.fn(async () => { rightLeaf.view = { getTabManager: jest.fn(), openSession, focusActiveInput: jest.fn() }; }),
+      };
+      mockApp.workspace.getLeavesOfType.mockReturnValue([]);
+      mockApp.workspace.getRightLeaf.mockReturnValue(rightLeaf);
+      await plugin.onload();
+      await viewsOf(plugin).openSession('session-1', { focus: false });
+      expect(rightLeaf.setViewState).toHaveBeenCalledWith({ type: VIEW_TYPE_CLAUDIAN, active: false });
+      expect(openSession).toHaveBeenCalledWith('session-1');
+      expect(mockApp.workspace.revealLeaf).not.toHaveBeenCalled();
+    });
   });
 
 });

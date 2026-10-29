@@ -444,7 +444,7 @@ describe('MainTurnExecution', () => {
     expect(fixture.input.value).toBe('');
     expect(fixture.state.messages).toHaveLength(2);
     expect(fixture.deps.conversationController.save).toHaveBeenCalledTimes(1);
-    expect(fixture.deps.streamController.appendError).toHaveBeenCalledWith('stream failed');
+    expect(fixture.deps.streamController.appendError).toHaveBeenCalledWith('stream failed', undefined, fixture.state.messages[1]);
   });
 
   it('puts the completed turn checkpoint and statistics on the final assistant projection after message boundaries', async () => {
@@ -548,7 +548,7 @@ describe('MainTurnExecution', () => {
 
       await fixture.controller.sendMessage({ content: 'test request' });
 
-      expect(fixture.deps.streamController.appendError).toHaveBeenCalledWith('Model overloaded');
+      expect(fixture.deps.streamController.appendError).toHaveBeenCalledWith('Model overloaded', undefined, fixture.state.messages[1]);
       const assistantMessage = fixture.state.messages[1];
       expect(assistantMessage.durationSeconds).toBeUndefined();
       expect(assistantMessage.durationFlavorWord).toBeUndefined();
@@ -569,7 +569,7 @@ describe('MainTurnExecution', () => {
 
       await fixture.controller.sendMessage({ content: 'test request' });
 
-      expect(fixture.deps.streamController.appendError).toHaveBeenCalledWith('stream failed');
+      expect(fixture.deps.streamController.appendError).toHaveBeenCalledWith('stream failed', undefined, fixture.state.messages[1]);
       const assistantMessage = fixture.state.messages[1];
       expect(assistantMessage.durationSeconds).toBeUndefined();
       expect(assistantMessage.durationFlavorWord).toBeUndefined();
