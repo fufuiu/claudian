@@ -8,13 +8,15 @@
 ### 当前状态
 
 - 本地维护分支：`zh-cn`，保留原来的 `main` 分支。
-- 官方远程：`origin` → `https://github.com/YishenTu/claudian.git`。
-  不把它当成用户自己的 fork，不向官方仓库推送本地汉化。
+- 2026-10-29 已接入公开 Fork：`origin` → `https://github.com/fufuiu/claudian.git`，
+  GitHub 默认分支及本地维护分支均为 `zh-cn`。
+- 官方远程：`upstream` → `https://github.com/YishenTu/claudian.git`。
+  从 `upstream` 获取正式发布版本，只向 `origin` 推送个人修改。
 - 汉化历史：基于 `2.3.15`（`929ff4f5ad9bc1338ab975c5e10309d0480d3fe5`）的完整
   汉化已提交为 `ad123ef8`（"zh-cn: 保存基于 2.3.15 的完整汉化"，
   138 个文件 +7988/-844）。2026-10-22 合并官方发布标签 `2.3.27`
   （`96854b448b6af39a19d42b5a97093efb6c57c3be`，tag 对象指向该提交），当前
-  基线即 `2.3.27`；未合并更新的 `origin/main` tip（按交接规范只合并正式
+  基线即 `2.3.27`；未合并更新的 `upstream/main` tip（按交接规范只合并正式
   发布标签）。
 - 合并 `2.3.27` 的冲突处理：87 个冲突文件（84 修改 + 3 个上游删除文件，
   后者确认为上游真实删除，随 `git rm` 结束）。10 个语言包 JSON 按 key 做
@@ -48,7 +50,7 @@
 
 1. 在 `zh-cn` 上维护。首次同步上游前，先把当前汉化保存为独立提交，区分并
    保留用户后续改动；不用丢弃工作区的方式恢复官方版本。
-2. 获取上游后合并用户指定的发布标签；未指定时优先正式发布版本。冲突处
+2. 用 `git fetch upstream --tags` 获取上游后合并用户指定的发布标签；未指定时优先正式发布版本。冲突处
    保留新版功能逻辑并补译，不统一选择 `ours` 或 `theirs`。
 3. 界面文案通过 `t()` 和 `src/i18n/locales/zh-CN.json` 维护。新增键时保持
    各语言包结构一致；本次新增文案在其他未补译语言中保留英文。
@@ -92,7 +94,7 @@
 npm run typecheck && npm run lint && npm run test && npm run build && npm run check:performance
 ```
 
-- For focused changes, `npm run test:affected -- --base origin/main` selects related tests; it does not replace typecheck, lint, build, or performance checks. Documentation-only changes need `git diff --check` (CI enforces it on every pull request) and their affected documentation tests, not a production build.
+- For focused changes, `npm run test:affected -- --base upstream/main` selects related tests; it does not replace typecheck, lint, build, or performance checks. Documentation-only changes need `git diff --check` (CI enforces it on every pull request) and their affected documentation tests, not a production build.
 - Dev and production builds load `.env.local` and may copy artifacts into the configured `OBSIDIAN_VAULT`, including removal of its old `.codex-vendor`. Check that destination before building; clearing the shell variable does not prevent reloading it from the file.
 
 ## Architectural constraints

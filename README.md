@@ -1,5 +1,7 @@
 # Claudian
 
+这是个人自用的简体中文汉化 Fork，在 `zh-cn` 分支维护；原项目为 [YishenTu/claudian](https://github.com/YishenTu/claudian)。上游更新通过 `upstream` 获取，个人修改推送到 `origin`。维护与构建说明见 [AGENTS.md](AGENTS.md)，原作者署名和许可证保留。
+
 <p>
   <a href="https://trendshift.io/repositories/21115?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-21115">
     <img align="right" src="https://trendshift.io/api/badge/repositories/21115" alt="Claudian on Trendshift" width="180">
